@@ -1461,7 +1461,7 @@ function buildPostCard(post) {
     <div class="post-meta">
       <div class="post-meta-left">
         <span class="post-author">
-          <span class="post-author-avatar">${author[0].toUpperCase()}</span>
+          <span class="post-author-avatar" data-author="${escapeHtml(author)}">${author[0].toUpperCase()}</span>
           ${author}
         </span>
         <span class="post-date">${dateStr}</span>
@@ -1532,6 +1532,12 @@ function buildPostCard(post) {
   card.querySelector('.btn-edit')?.addEventListener('click', () => editPost(post));
   card.querySelector('.btn-share')?.addEventListener('click', () => openShareModal(post.id));
 
+  // Async avatar injection — fires after card is returned and attached
+  getAuthorAvatar(author).then(url => {
+    if (!url) return;
+    const avatarEl = card.querySelector('.post-author-avatar');
+    if (avatarEl) avatarEl.innerHTML = `<img src="${escapeHtml(url)}" alt="${escapeHtml(author[0].toUpperCase())}">`;
+  });
 
   return card;
 }
@@ -2380,6 +2386,380 @@ function refreshPanel() {
   if (btn)    btn.textContent = 'Load more';
   loadMorePanelTitles();
 }
+
+
+/* =============================================
+   PROFILE MODAL
+   ============================================= */
+
+let profileCache = {};   // keyed by uid, avoids redundant DB reads
+const avatarCache = {};   // username → url string or null
+
+async function getAuthorAvatar(username) {
+  if (username in avatarCache) return avatarCache[username];
+  const { data } = await db
+    .from('profiles')
+    .select('avatar_url')
+    .like('email', `${username}@%`)
+    .maybeSingle();
+  avatarCache[username] = data?.avatar_url || null;
+  return avatarCache[username];
+}
+
+const profileModal      = document.getElementById('profile-modal');
+const profileModalClose = document.getElementById('profile-modal-close');
+const profileAvatarWrap = document.getElementById('profile-avatar-wrap');
+const profileAvatarDisp = document.getElementById('profile-avatar-display');
+const profileAvatarLbl  = document.getElementById('profile-avatar-label');
+const profileAvatarInp  = document.getElementById('profile-avatar-input');
+const profileEmailDisp  = document.getElementById('profile-email-display');
+const profileBioInput   = document.getElementById('profile-bio-input');
+const profileBioDisp    = document.getElementById('profile-bio-display');
+const profileSaveBtn    = document.getElementById('profile-save-btn');
+
+let profileTargetUid    = null;   // uid of the profile being viewed
+let profilePendingBlob  = null;   // new avatar blob waiting to be saved
+let profilePendingPreview = null; // object URL for preview
+
+profileModalClose.addEventListener('click', closeProfileModal);
+profileModal.addEventListener('click', e => { if (e.target === profileModal) closeProfileModal(); });
+
+/* =============================================
+   FIX 3 — Avatar click opens lightbox
+   ============================================= */
+profileAvatarDisp.addEventListener('click', () => {
+  const img = profileAvatarDisp.querySelector('img');
+  if (!img) return;
+  // Close the profile modal so the lightbox isn't obscured
+  profileModal.classList.add('hidden');
+  openLightbox(img.src);
+});
+
+function closeProfileModal() {
+  profileModal.classList.add('hidden');
+  if (profilePendingPreview) { URL.revokeObjectURL(profilePendingPreview); profilePendingPreview = null; }
+  profilePendingBlob = null;
+}
+
+/* ── Render avatar ── */
+function renderAvatarDisp(url, initial) {
+  if (url) {
+    profileAvatarDisp.innerHTML = `<img src="${escapeHtml(url)}" alt="Avatar">`;
+    profileAvatarDisp.style.cursor = 'zoom-in';
+  } else {
+    profileAvatarDisp.textContent = initial.toUpperCase();
+    profileAvatarDisp.style.cursor = '';
+  }
+}
+
+/* ── Open modal ── */
+async function openProfileModal(authorUsername, viewerIsOwner) {
+  profilePendingBlob    = null;
+  profilePendingPreview = null;
+
+  profileAvatarLbl.classList.toggle('hidden', !viewerIsOwner);
+  profileBioInput.classList.toggle('hidden', !viewerIsOwner);
+  profileBioDisp.classList.add('hidden');
+  profileSaveBtn.classList.toggle('hidden', !viewerIsOwner);
+
+  profileEmailDisp.textContent = '';
+  profileBioInput.value        = '';
+  profileBioDisp.textContent   = '';
+  renderAvatarDisp(null, authorUsername[0]);
+
+  /* =============================================
+     FIX 2 — Author name displayed below avatar
+     ============================================= */
+  // Remove any previously injected username label before re-inserting
+  profileAvatarWrap.querySelector('.profile-author-name')?.remove();
+  const nameEl = document.createElement('div');
+  nameEl.className = 'profile-author-name';
+  nameEl.textContent = authorUsername;
+  profileAvatarWrap.appendChild(nameEl);
+
+  profileModal.classList.remove('hidden');
+
+  // ── Resolve uid ──────────────────────────────────────
+  let uid   = null;
+  let email = '';
+
+  if (viewerIsOwner) {
+    const { data: { session } } = await db.auth.getSession();
+    uid   = session?.user?.id    || null;
+    email = session?.user?.email || '';
+  }
+
+  profileTargetUid = uid;
+
+  // ── Fetch profile from DB ──────────────────────────────────────
+  const cacheKey = authorUsername;
+  let profile = profileCache[cacheKey] || null;
+
+  if (!profile) {
+    let data = null;
+
+    if (viewerIsOwner && uid) {
+      const res = await db.from('profiles').select('*').eq('id', uid).maybeSingle();
+      data = res.data;
+    } else {
+      const res = await db
+        .from('profiles')
+        .select('*')
+        .like('email', `${authorUsername}@%`)
+        .maybeSingle();
+      data = res.data;
+    }
+
+    profile = data || null;
+    if (profile) profileCache[cacheKey] = profile;
+  }
+
+  if (!viewerIsOwner) {
+    // Try the stored profile email first (full address)
+    if (profile?.email) {
+      email = profile.email;
+    } else {
+      // No profile row — reconstruct from own session domain
+      const { data: { session: ownSession } } = await db.auth.getSession();
+      const ownEmail = ownSession?.user?.email || '';
+      const domain   = ownEmail.split('@')[1] || '';
+      email = domain ? `${authorUsername}@${domain}` : authorUsername;
+    }
+  }
+
+  profileEmailDisp.textContent = email;
+
+  // ── Populate UI from profile ───────────────────────────────────
+  const bioField = document.getElementById('profile-bio-field');
+  bioField.classList.remove('hidden');
+
+  if (profile) {
+    renderAvatarDisp(profile.avatar_url, authorUsername[0]);
+
+    const bio = (profile.bio || '').trim();
+
+    if (viewerIsOwner) {
+      profileBioInput.value = bio;
+    } else {
+      if (bio) {
+        profileBioDisp.textContent = bio;
+        profileBioDisp.classList.remove('hidden');
+      } else {
+        bioField.classList.add('hidden');
+      }
+    }
+  } else {
+    if (!viewerIsOwner) {
+      bioField.classList.add('hidden');
+    }
+  }
+}
+
+
+/* =============================================
+   AVATAR CROP
+   ============================================= */
+let cropImg = null, cropScale = 1, cropOffsetX = 0, cropOffsetY = 0;
+let cropDragging = false, cropDragStartX = 0, cropDragStartY = 0;
+let cropBaseOffsetX = 0, cropBaseOffsetY = 0;
+
+const cropModal   = document.getElementById('crop-modal');
+const cropCanvas  = document.getElementById('crop-canvas');
+const cropCtx     = cropCanvas.getContext('2d');
+const cropZoom    = document.getElementById('crop-zoom');
+const cropCancel  = document.getElementById('crop-cancel');
+const cropConfirm = document.getElementById('crop-confirm');
+const CROP_SIZE   = 280;
+
+// Set both the internal resolution AND the CSS size explicitly
+cropCanvas.width  = CROP_SIZE;
+cropCanvas.height = CROP_SIZE;
+cropCanvas.style.width  = CROP_SIZE + 'px';
+cropCanvas.style.height = CROP_SIZE + 'px';
+
+function drawCrop() {
+  cropCtx.clearRect(0, 0, CROP_SIZE, CROP_SIZE);
+  if (!cropImg) return;
+  cropCtx.drawImage(
+    cropImg,
+    cropOffsetX, cropOffsetY,
+    cropImg.naturalWidth  * cropScale,
+    cropImg.naturalHeight * cropScale
+  );
+}
+
+function clampCropOffsets() {
+  const w = cropImg.naturalWidth  * cropScale;
+  const h = cropImg.naturalHeight * cropScale;
+
+  if (w >= CROP_SIZE) {
+    cropOffsetX = Math.min(0, Math.max(CROP_SIZE - w, cropOffsetX));
+  } else {
+    cropOffsetX = (CROP_SIZE - w) / 2;
+  }
+
+  if (h >= CROP_SIZE) {
+    cropOffsetY = Math.min(0, Math.max(CROP_SIZE - h, cropOffsetY));
+  } else {
+    cropOffsetY = (CROP_SIZE - h) / 2;
+  }
+}
+
+cropZoom.addEventListener('input', () => {
+  const newScale = parseFloat(cropZoom.value);
+  // Zoom anchored to canvas center
+  const cx = CROP_SIZE / 2, cy = CROP_SIZE / 2;
+  cropOffsetX = cx - (cx - cropOffsetX) * (newScale / cropScale);
+  cropOffsetY = cy - (cy - cropOffsetY) * (newScale / cropScale);
+  cropScale = newScale;
+  clampCropOffsets();
+  drawCrop();
+});
+
+// Use mousemove/mousedown instead of pointer events to avoid capture issues
+cropCanvas.addEventListener('mousedown', e => {
+  e.preventDefault();
+  cropDragging    = true;
+  cropDragStartX  = e.clientX;
+  cropDragStartY  = e.clientY;
+  cropBaseOffsetX = cropOffsetX;
+  cropBaseOffsetY = cropOffsetY;
+});
+
+document.addEventListener('mousemove', e => {
+  if (!cropDragging) return;
+  cropOffsetX = cropBaseOffsetX + (e.clientX - cropDragStartX);
+  cropOffsetY = cropBaseOffsetY + (e.clientY - cropDragStartY);
+  clampCropOffsets();
+  drawCrop();
+});
+
+document.addEventListener('mouseup', () => { cropDragging = false; });
+
+// Touch support
+cropCanvas.addEventListener('touchstart', e => {
+  e.preventDefault();
+  const t = e.touches[0];
+  cropDragging    = true;
+  cropDragStartX  = t.clientX;
+  cropDragStartY  = t.clientY;
+  cropBaseOffsetX = cropOffsetX;
+  cropBaseOffsetY = cropOffsetY;
+}, { passive: false });
+
+cropCanvas.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (!cropDragging) return;
+  const t = e.touches[0];
+  cropOffsetX = cropBaseOffsetX + (t.clientX - cropDragStartX);
+  cropOffsetY = cropBaseOffsetY + (t.clientY - cropDragStartY);
+  clampCropOffsets();
+  drawCrop();
+}, { passive: false });
+
+cropCanvas.addEventListener('touchend', () => { cropDragging = false; });
+
+cropCancel.addEventListener('click', () => cropModal.classList.add('hidden'));
+cropModal.addEventListener('click', e => { if (e.target === cropModal) cropModal.classList.add('hidden'); });
+
+cropConfirm.addEventListener('click', () => {
+  cropCanvas.toBlob(blob => {
+    profilePendingBlob = blob;
+    if (profilePendingPreview) URL.revokeObjectURL(profilePendingPreview);
+    profilePendingPreview = URL.createObjectURL(blob);
+    profileAvatarDisp.innerHTML = `<img src="${profilePendingPreview}" alt="Preview">`;
+    profileAvatarDisp.style.cursor = 'zoom-in';
+    cropModal.classList.add('hidden');
+  }, 'image/webp', 0.85);
+});
+
+profileAvatarInp.addEventListener('change', () => {
+  const file = profileAvatarInp.files[0];
+  if (!file) return;
+  profileAvatarInp.value = '';
+
+  const reader = new FileReader();
+  reader.onload = evt => {
+    // Use FileReader instead of createObjectURL — no revocation timing issues
+    cropImg = new Image();
+    cropImg.onload = () => {
+      cropScale = Math.max(CROP_SIZE / cropImg.naturalWidth, CROP_SIZE / cropImg.naturalHeight);
+      cropZoom.min   = cropScale;
+      cropZoom.max   = cropScale * 3;
+      cropZoom.step  = 0.001;
+      cropZoom.value = cropScale;
+
+      // Center
+      cropOffsetX = (CROP_SIZE - cropImg.naturalWidth  * cropScale) / 2;
+      cropOffsetY = (CROP_SIZE - cropImg.naturalHeight * cropScale) / 2;
+
+      drawCrop();
+      cropModal.classList.remove('hidden');
+    };
+    cropImg.src = evt.target.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+/* ── Save ── */
+profileSaveBtn.addEventListener('click', async () => {
+  if (!profileTargetUid) return;
+  profileSaveBtn.disabled     = true;
+  profileSaveBtn.textContent  = 'Saving…';
+
+  try {
+    let avatarUrl = profileCache[currentUsername]?.avatar_url || null;
+
+    if (profilePendingBlob) {
+      const fileName = `avatar-${profileTargetUid}-${Date.now()}.webp`;
+      const { error: upErr } = await db.storage
+        .from('posts')
+        .upload(fileName, profilePendingBlob, { contentType: 'image/webp', upsert: true });
+      if (upErr) throw upErr;
+      avatarUrl = `${SUPABASE_URL}/storage/v1/object/public/posts/${fileName}`;
+      if (profilePendingPreview) { URL.revokeObjectURL(profilePendingPreview); profilePendingPreview = null; }
+      profilePendingBlob = null;
+    }
+
+    const { data: { session } } = await db.auth.getSession();
+    const email = session?.user?.email || '';
+    const bio   = profileBioInput.value.trim();
+
+    const { error } = await db.from('profiles').upsert({
+      id:         profileTargetUid,
+      email,
+      avatar_url: avatarUrl,
+      bio,
+      updated_at: new Date().toISOString()
+    }, { onConflict: 'id' });
+    if (error) throw error;
+
+    // Bust cache
+    delete profileCache[currentUsername];
+
+    closeProfileModal();
+  } catch (err) {
+    console.error('[Profile] Save failed:', err);
+    alert('Save failed: ' + err.message);
+  } finally {
+    profileSaveBtn.disabled    = false;
+    profileSaveBtn.textContent = 'Save';
+  }
+});
+
+/* ── Delegate click on author name/avatar in post cards ── */
+document.getElementById('posts-feed').addEventListener('click', e => {
+  const el = e.target.closest('.post-author');
+  if (!el) return;
+  const card   = el.closest('[data-id]');
+  if (!card) return;
+  const postId = card.dataset.id;
+  const post   = loadedPosts.find(p => String(p.id) === String(postId));
+  if (!post) return;
+  const author        = post.author || '';
+  const viewerIsOwner = isAdmin && currentUsername === author;
+  openProfileModal(author, viewerIsOwner);
+});
 
 // =============================================
 //  INIT  — detect single-post view synchronously
