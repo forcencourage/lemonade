@@ -2102,6 +2102,7 @@ async function renderSinglePost(postId) {
         </svg>
       </button>
     `;
+    attachRandomBtn(document.getElementById('random-btn'));
   }
 
   const feed = document.getElementById('posts-feed');
