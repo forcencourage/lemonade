@@ -2083,6 +2083,24 @@ async function renderSinglePost(postId) {
     // In renderSinglePost, replace the navbar innerHTML with:
     navbar.querySelector('.nav-right').innerHTML = `
       <a href="${location.origin}/lemonade/" class="btn-ghost btn-sm" style="text-decoration:none;">← All posts</a>
+      <button id="random-btn" class="icon-btn random-btn" title="Random post">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <g transform="rotate(-12, 13, 8)">
+            <rect x="7" y="1" width="11" height="11" rx="2" fill="white" stroke="black" stroke-width="1.4"/>
+            <circle cx="10.5" cy="4" r="1" fill="black"/>
+            <circle cx="14.5" cy="4" r="1" fill="black"/>
+            <circle cx="12.5" cy="6.5" r="1" fill="black"/>
+            <circle cx="10.5" cy="9" r="1" fill="black"/>
+            <circle cx="14.5" cy="9" r="1" fill="black"/>
+          </g>
+          <rect x="1" y="8" width="11" height="11" rx="2" fill="white" stroke="black" stroke-width="1.4"/>
+          <circle cx="4" cy="11" r="1" fill="black"/>
+          <circle cx="8" cy="11" r="1" fill="black"/>
+          <circle cx="6" cy="14" r="1" fill="black"/>
+          <circle cx="4" cy="17" r="1" fill="black"/>
+          <circle cx="8" cy="17" r="1" fill="black"/>
+        </svg>
+      </button>
     `;
   }
 
@@ -2764,12 +2782,9 @@ document.getElementById('posts-feed').addEventListener('click', e => {
 /* =============================================
    RANDOM POST
    ============================================= */
-document.getElementById('random-btn').addEventListener('click', async () => {
-  const btn = document.getElementById('random-btn');
-
-  // Trigger the throw animation
+async function goToRandomPost(btn) {
   btn.classList.remove('rolling');
-  void btn.offsetWidth; // reflow to restart animation
+  void btn.offsetWidth;
   btn.classList.add('rolling');
   btn.disabled = true;
 
@@ -2786,7 +2801,6 @@ document.getElementById('random-btn').addEventListener('click', async () => {
       ? `${location.origin}/lemonade`
       : location.origin;
 
-    // Wait for the animation to finish before navigating
     setTimeout(() => {
       window.location.href = `${SITE_BASE}/post/${pick.id}`;
     }, 480);
@@ -2796,7 +2810,13 @@ document.getElementById('random-btn').addEventListener('click', async () => {
     btn.disabled = false;
     btn.classList.remove('rolling');
   }
-});
+}
+
+function attachRandomBtn(btn) {
+  btn.addEventListener('click', () => goToRandomPost(btn));
+}
+
+attachRandomBtn(document.getElementById('random-btn'));
 
 // =============================================
 //  INIT  — detect single-post view synchronously
