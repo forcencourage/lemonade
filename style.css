@@ -1956,3 +1956,41 @@ input[type="search"]::-webkit-search-cancel-button {
   display: flex; align-items: center; gap: .75rem;
   margin: .5rem auto; width: 280px;
 }
+
+
+/* Random post dice button */
+.random-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border-radius: 8px;
+  transition: background 150ms ease, transform 150ms ease;
+  flex-shrink: 0;
+}
+
+.random-btn:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+.random-btn:active {
+  transform: scale(0.9);
+}
+
+.random-btn svg {
+  display: block;
+  transition: transform 0.5s ease;
+}
+
+@keyframes dice-throw {
+  0%   { transform: rotate(0deg) scale(1); }
+  20%  { transform: rotate(-25deg) scale(1.15) translateY(-2px); }
+  45%  { transform: rotate(18deg) scale(0.92) translateY(1px); }
+  65%  { transform: rotate(-10deg) scale(1.06); }
+  82%  { transform: rotate(5deg) scale(0.97); }
+  100% { transform: rotate(0deg) scale(1); }
+}
+
+.random-btn.rolling svg {
+  animation: dice-throw 0.55s cubic-bezier(0.36, 0.07, 0.19, 0.97);
+}

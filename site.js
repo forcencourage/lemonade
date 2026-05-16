@@ -2761,6 +2761,43 @@ document.getElementById('posts-feed').addEventListener('click', e => {
   openProfileModal(author, viewerIsOwner);
 });
 
+/* =============================================
+   RANDOM POST
+   ============================================= */
+document.getElementById('random-btn').addEventListener('click', async () => {
+  const btn = document.getElementById('random-btn');
+
+  // Trigger the throw animation
+  btn.classList.remove('rolling');
+  void btn.offsetWidth; // reflow to restart animation
+  btn.classList.add('rolling');
+  btn.disabled = true;
+
+  try {
+    const { data, error } = await db
+      .from('posts')
+      .select('id')
+      .eq('is_private', false);
+
+    if (error || !data || !data.length) return;
+
+    const pick = data[Math.floor(Math.random() * data.length)];
+    const SITE_BASE = location.hostname === 'mokawonka.github.io'
+      ? `${location.origin}/lemonade`
+      : location.origin;
+
+    // Wait for the animation to finish before navigating
+    setTimeout(() => {
+      window.location.href = `${SITE_BASE}/post/${pick.id}`;
+    }, 480);
+
+  } catch (err) {
+    console.error('[Random post] failed:', err);
+    btn.disabled = false;
+    btn.classList.remove('rolling');
+  }
+});
+
 // =============================================
 //  INIT  — detect single-post view synchronously
 // =============================================
