@@ -69,6 +69,63 @@ const noResults      = document.getElementById('no-results');
 const searchInput    = document.getElementById('search-input');
 const searchClear    = document.getElementById('search-clear');
 
+
+/* =============================================
+   CUSTOM QUILL BLOT — X/TWITTER EMBED
+   ============================================= */
+function loadTwitterScript() {
+  if (window._twitterScriptPromise) return window._twitterScriptPromise;
+  window._twitterScriptPromise = new Promise(resolve => {
+    if (window.twttr?.widgets) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://platform.twitter.com/widgets.js';
+    s.async = true;
+    s.charset = 'utf-8';
+    s.onload = resolve;
+    document.head.appendChild(s);
+  });
+  return window._twitterScriptPromise;
+}
+
+const BlockEmbed = Quill.import('blots/block/embed');
+
+class TweetBlot extends BlockEmbed {
+  static create(url) {
+    const node = super.create();
+    node.dataset.tweetUrl = url;
+    node.contentEditable  = 'false';
+
+    const tweetId = url.match(/\/status\/(\d+)/)?.[1];
+    if (!tweetId) return node;
+
+    // Wrapper so the widget doesn't escape the blot
+    node.style.cssText = 'display:block; min-height:200px; margin:12px 0;';
+
+    const blockquote = document.createElement('blockquote');
+    blockquote.className   = 'twitter-tweet';
+    blockquote.dataset.conversation = 'none'; // hides reply chain
+    blockquote.dataset.theme = 
+      window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    blockquote.innerHTML = `<a href="${url}"></a>`;
+    node.appendChild(blockquote);
+
+    // If the widget script is already loaded, just process this node
+    if (window.twttr?.widgets) {
+      window.twttr.widgets.load(node);
+    } else {
+      loadTwitterScript().then(() => window.twttr.widgets.load(node));
+    }
+
+    return node;
+  }
+
+  static value(node) { return node.dataset.tweetUrl; }
+}
+TweetBlot.blotName  = 'tweet';
+TweetBlot.tagName   = 'div';
+TweetBlot.className = 'ql-tweet';
+Quill.register(TweetBlot);
+
 /* =============================================
    QUILL SETUP
    ============================================= */
@@ -82,16 +139,47 @@ const quill = new Quill('#quill-editor', {
         ['bold', 'italic', 'underline', 'strike'],
         ['blockquote', 'code-block'],
         [{ list: 'ordered' }, { list: 'bullet' }],
-        ['link', 'image', 'video'],
+        ['link', 'image', 'video', 'tweet'],
         ['clean']
       ],
       handlers: {
         image: imageHandler,
-        video: videoHandler 
+        video: videoHandler,
+        tweet: tweetHandler 
       }
     }
   }
 });
+
+
+function tweetHandler() {
+  const tooltip = quill.theme.tooltip;
+  const originalSave = tooltip.save.bind(tooltip);
+  const originalHide = tooltip.hide.bind(tooltip);
+
+  tooltip.save = function () {
+    const url = this.textbox.value.trim();
+    const isXUrl = /(?:twitter\.com|x\.com)\/\w+\/status\/\d+/.test(url);
+    if (isXUrl) {
+      const range = quill.getSelection(true);
+      quill.insertEmbed(range.index, 'tweet', url, 'user');
+      quill.setSelection(range.index + 1);
+    }
+    tooltip.save = originalSave;
+    tooltip.hide = originalHide;
+    tooltip.hide();
+  };
+
+  tooltip.hide = function () {
+    tooltip.save = originalSave;
+    tooltip.hide = originalHide;
+    originalHide();
+  };
+
+  tooltip.edit('link');
+  tooltip.textbox.placeholder = 'X / Twitter post URL…';
+  tooltip.textbox.value = '';
+}
 
 function videoHandler() {
   const tooltip = quill.theme.tooltip;
@@ -279,16 +367,32 @@ async function imageHandler() {
 }
 
 quill.clipboard.addMatcher(Node.TEXT_NODE, (node, delta) => {
-  const ytRegex = /(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([\w-]{11})/g;
   const text = node.data;
-  let match, lastIndex = 0;
-  const ops = [];
-  while ((match = ytRegex.exec(text)) !== null) {
-    if (match.index > lastIndex) ops.push({ insert: text.slice(lastIndex, match.index) });
-    ops.push({ insert: { video: `https://www.youtube.com/embed/${match[1].slice(0, 11)}` } });
+  const ops  = [];
+  let lastIndex = 0;
+
+  // Combined regex: YouTube first, then X/Twitter
+  const combined = /(?:(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([\w-]{11}))|(?:(https?:\/\/(?:www\.)?(?:twitter\.com|x\.com)\/\w+\/status\/\d+\S*))/g;
+
+  let match;
+  while ((match = combined.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      ops.push({ insert: text.slice(lastIndex, match.index) });
+    }
+
+    if (match[1]) {
+      // YouTube
+      ops.push({ insert: { video: `https://www.youtube.com/embed/${match[1].slice(0, 11)}` } });
+    } else if (match[2]) {
+      // X / Twitter
+      ops.push({ insert: { tweet: match[2] } });
+    }
+
     lastIndex = match.index + match[0].length;
   }
+
   if (lastIndex < text.length) ops.push({ insert: text.slice(lastIndex) });
+
   if (ops.length > 0) {
     const newDelta = new quill.constructor.imports['delta']();
     ops.forEach(op => newDelta.push(op));
@@ -598,6 +702,16 @@ publishBtn.addEventListener('click', async () => {
 function stripHtml(html) {
   const div = document.createElement('div');
   div.innerHTML = html;
+
+  // Replace tweet embeds with their URL as plain text
+  div.querySelectorAll('.ql-tweet').forEach(node => {
+    const url = node.dataset.tweetUrl;
+    if (url) {
+      const placeholder = document.createTextNode(`[Tweet: ${url}]\n`);
+      node.replaceWith(placeholder);
+    }
+  });
+
   return div.textContent || div.innerText || '';
 }
 
@@ -665,8 +779,37 @@ async function generateAICommentsBatch(postText, personas, imageUrls = []) {
   return data.comments || [];
 }
 
+function extractTweetUrlsFromHtml(html) {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  return [...div.querySelectorAll('.ql-tweet')]
+    .map(node => node.dataset.tweetUrl)
+    .filter(Boolean);
+}
+
+async function fetchTweetText(tweetUrl) {
+  try {
+    const res = await fetch(
+      'https://sdltggiedqstrsnvvjmj.supabase.co/functions/v1/get-tweet',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({ tweetUrl }),
+      }
+    );
+    const data = await res.json();
+    return data.text || null;
+  } catch (err) {
+    console.warn('[Tweet] fetch failed:', err);
+    return null;
+  }
+}
+
 /* =============================================
-   AI COMMENTS (with YouTube transcript support)
+   AI COMMENTS (with YouTube transcript and tweet support)
    ============================================= */
 function scheduleAIComments(postId, postHtml) {
   if (!personalities.length) return;
@@ -714,6 +857,23 @@ function scheduleAIComments(postId, postHtml) {
         showCommentsStatus(postId, 'no-transcript');
         return;
       }
+    }
+
+    // ── If tweet embeds detected, fetch their text ──
+    const tweetUrls = extractTweetUrlsFromHtml(postHtml);
+    if (tweetUrls.length > 0) {
+      const tweetTexts = await Promise.allSettled(
+        tweetUrls.map(url => fetchTweetText(url))
+      );
+      tweetUrls.forEach((url, i) => {
+        const result = tweetTexts[i];
+        if (result.status === 'fulfilled' && result.value) {
+          postText = postText.replace(
+            `[Tweet: ${url}]`,
+            `[Tweet: ${url}]\n[Tweet content: "${result.value}"]`
+          );
+        }
+      });
     }
 
     // ── Generate AI comments ──
@@ -1514,6 +1674,13 @@ function buildPostCard(post) {
   </div>
 ` + adminBar;
 
+  const tweetNodes = card.querySelectorAll('.ql-tweet');
+  if (tweetNodes.length) {
+    loadTwitterScript().then(() => {
+      tweetNodes.forEach(node => window.twttr.widgets.load(node));
+    });
+  }
+
   card.querySelector('.post-read-more')?.addEventListener('click', () => {
     const wrap    = card.querySelector('.post-body-wrap');
     const overlay = card.querySelector('.post-fade-overlay');
@@ -2136,6 +2303,13 @@ async function renderSinglePost(postId) {
     card.querySelector('.post-admin-bar')?.remove();
 
     feed.appendChild(card);
+
+    const tweetNodes = card.querySelectorAll('.ql-tweet');
+    if (tweetNodes.length) {
+      loadTwitterScript().then(() => {
+        tweetNodes.forEach(node => window.twttr.widgets.load(node));
+      });
+    }
     
     if (post.summary) appendSummaryToCard(post.id, post.summary, true);
 
