@@ -110,11 +110,20 @@ class TweetBlot extends BlockEmbed {
     node.appendChild(blockquote);
 
     // If the widget script is already loaded, just process this node
-    if (window.twttr?.widgets) {
-      window.twttr.widgets.load(node);
-    } else {
-      loadTwitterScript().then(() => window.twttr.widgets.load(node));
-    }
+    // Wait until node is actually in the DOM before calling load()
+    const tryLoad = () => {
+      if (!document.contains(node)) {
+        requestAnimationFrame(tryLoad);
+        return;
+      }
+      if (window.twttr?.widgets) {
+        window.twttr.widgets.load(node);
+      } else {
+        loadTwitterScript().then(() => window.twttr.widgets.load(node));
+      }
+    };
+
+    requestAnimationFrame(tryLoad);
 
     return node;
   }
