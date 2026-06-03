@@ -2051,7 +2051,6 @@ input[type="search"]::-webkit-search-cancel-button {
   text-align: left;
   vertical-align: top;
   min-width: 60px;
-  word-break: break-word;
 }
 
 .post-body table tr:hover {
