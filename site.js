@@ -142,6 +142,7 @@ const quill = new Quill('#quill-editor', {
   theme: 'snow',
   placeholder: "What's on your mind…",
   modules: {
+    table: true,
     toolbar: {
       container: [
         [{ header: [2, 3, false] }],
@@ -149,12 +150,16 @@ const quill = new Quill('#quill-editor', {
         ['blockquote', 'code-block'],
         [{ list: 'ordered' }, { list: 'bullet' }],
         ['link', 'image', 'video', 'tweet'],
+        ['table'],
         ['clean']
       ],
       handlers: {
         image: imageHandler,
         video: videoHandler,
-        tweet: tweetHandler 
+        tweet: tweetHandler,
+        table: function() {
+          quill.getModule('table').insertTable(1, 2);
+        }
       }
     }
   }
@@ -1513,6 +1518,20 @@ function optimizeImages(html) {
   return div.innerHTML;
 }
 
+
+function normalizeTables(html) {
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  div.querySelectorAll('table').forEach(table => {
+    const wrapper = document.createElement('div');
+    wrapper.style.overflowX = 'auto';
+    table.parentNode.insertBefore(wrapper, table);
+    wrapper.appendChild(table);
+  });
+  return div.innerHTML;
+}
+
+
 /**
  * Quill stores indented list items as flat <li class="ql-indent-N"> elements.
  * This converts them into proper nested <ul>/<ol> trees so CSS counters work.
@@ -1646,6 +1665,7 @@ function buildPostCard(post) {
 
   let bodyHtml = post.content || '';
   bodyHtml = normalizeQuillLists(bodyHtml);
+  bodyHtml = normalizeTables(bodyHtml);
   bodyHtml = optimizeImages(bodyHtml);
   if (searchQuery) bodyHtml = highlightText(bodyHtml, searchQuery);
 
