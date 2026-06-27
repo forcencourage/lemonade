@@ -21,41 +21,40 @@
 </head>
 <body>
 
-  <!-- NAVBAR -->
-  <header id="navbar">
-    <div class="nav-inner">
-      <a class="site-title" href="https://mokawonka.github.io/lemonade">
-        <img src="./favicon.ico" height="32px">
-      </a>
-      <div class="nav-right">
-        <button id="random-btn" class="icon-btn random-btn" title="Random post">
-          <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <!-- back die, rotated ~12° -->
-            <g transform="rotate(-12, 13, 8)">
-              <rect x="7" y="1" width="11" height="11" rx="2" fill="white" stroke="black" stroke-width="1.4"/>
-              <circle cx="10.5" cy="4" r="1" fill="black"/>
-              <circle cx="14.5" cy="4" r="1" fill="black"/>
-              <circle cx="12.5" cy="6.5" r="1" fill="black"/>
-              <circle cx="10.5" cy="9" r="1" fill="black"/>
-              <circle cx="14.5" cy="9" r="1" fill="black"/>
-            </g>
-            <!-- front die -->
-            <rect x="1" y="8" width="11" height="11" rx="2" fill="white" stroke="black" stroke-width="1.4"/>
-            <circle cx="4" cy="11" r="1" fill="black"/>
-            <circle cx="8" cy="11" r="1" fill="black"/>
-            <circle cx="6" cy="14" r="1" fill="black"/>
-            <circle cx="4" cy="17" r="1" fill="black"/>
-            <circle cx="8" cy="17" r="1" fill="black"/>
-          </svg>
-        </button>
-        <div class="search-wrap">
-          <input id="search-input" type="search" placeholder="Search posts…" autocomplete="off" readonly>
-          <button id="search-clear" class="icon-btn" title="Clear">&#10005;</button>
-        </div>
-        <button id="admin-btn" class="btn-primary btn-sm" title="Sign in">Sign in</button>
+<!-- NAVBAR -->
+<header id="navbar">
+  <div class="nav-inner">
+    <button class="site-title-btn" id="collection-btn" title="My collection" aria-label="My collection">
+      <img src="./favicon.ico" height="32px" alt="">
+      <span class="collection-badge hidden" id="collection-badge">0</span>
+    </button>
+    <div class="nav-right">
+      <button id="random-btn" class="icon-btn random-btn" title="Random post">
+        <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <g transform="rotate(-12, 13, 8)">
+            <rect x="7" y="1" width="11" height="11" rx="2" fill="white" stroke="black" stroke-width="1.4"/>
+            <circle cx="10.5" cy="4" r="1" fill="black"/>
+            <circle cx="14.5" cy="4" r="1" fill="black"/>
+            <circle cx="12.5" cy="6.5" r="1" fill="black"/>
+            <circle cx="10.5" cy="9" r="1" fill="black"/>
+            <circle cx="14.5" cy="9" r="1" fill="black"/>
+          </g>
+          <rect x="1" y="8" width="11" height="11" rx="2" fill="white" stroke="black" stroke-width="1.4"/>
+          <circle cx="4" cy="11" r="1" fill="black"/>
+          <circle cx="8" cy="11" r="1" fill="black"/>
+          <circle cx="6" cy="14" r="1" fill="black"/>
+          <circle cx="4" cy="17" r="1" fill="black"/>
+          <circle cx="8" cy="17" r="1" fill="black"/>
+        </svg>
+      </button>
+      <div class="search-wrap">
+        <input id="search-input" type="search" placeholder="Search posts…" autocomplete="off" readonly>
+        <button id="search-clear" class="icon-btn" title="Clear">&#10005;</button>
       </div>
+      <button id="admin-btn" class="btn-primary btn-sm" title="Sign in">Sign in</button>
     </div>
-  </header>
+  </div>
+</header>
 
   <!-- ADMIN PASSWORD MODAL -->
   <div id="auth-modal" class="modal-overlay hidden">

@@ -2056,3 +2056,105 @@ input[type="search"]::-webkit-search-cancel-button {
 .post-body table tr:hover {
   background-color: #fafafa;
 }
+
+/* =============================================
+    ── Collection button in navbar ──
+   ============================================= */
+
+.site-title-btn {
+  position: relative;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  line-height: 0;
+  border-radius: 6px;
+  transition: opacity 150ms ease;
+}
+.site-title-btn:hover { opacity: 0.7; }
+
+.collection-badge {
+  position: absolute;
+  bottom: -4px;
+  right: -6px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  background: #000;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: inherit;
+  border-radius: 999px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  pointer-events: none;
+  transition: transform 200ms cubic-bezier(.34,1.56,.64,1);
+}
+.collection-badge.hidden { display: none; }
+.collection-badge.bump {
+  animation: badge-bump 250ms cubic-bezier(.34,1.56,.64,1);
+}
+@keyframes badge-bump {
+  0%   { transform: scale(1); }
+  50%  { transform: scale(1.45); }
+  100% { transform: scale(1); }
+}
+
+/* ── Save comment button (inside each AI comment) ── */
+.btn-save-comment {
+  display: block;
+  margin: 10px auto 2px;
+  background: none;
+  border: 1.5px solid #000;
+  color: #000;
+  font-size: 11px;
+  font-family: inherit;
+  font-weight: 600;
+  letter-spacing: .04em;
+  padding: 5px 18px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 150ms ease, color 150ms ease, opacity 150ms ease;
+}
+.btn-save-comment:hover {
+  background: #000;
+  color: #fff;
+}
+.btn-save-comment.saved {
+  background: #000;
+  color: #fff;
+  pointer-events: none;
+  opacity: .55;
+}
+.btn-save-comment.saving {
+  opacity: .5;
+  pointer-events: none;
+}
+
+/* ── Save feedback toast ── */
+#save-toast {
+  position: fixed;
+  bottom: 28px;
+  left: 50%;
+  transform: translateX(-50%) translateY(12px);
+  background: #111;
+  color: #fff;
+  font-size: 13px;
+  font-family: inherit;
+  padding: 9px 20px;
+  border-radius: 999px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 220ms ease, transform 220ms ease;
+  z-index: 9999;
+  white-space: nowrap;
+}
+#save-toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}

@@ -13,6 +13,150 @@ const { createClient } = window.supabase;
 const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 /* =============================================
+   SAVED COMMENTS — badge, save, unsave
+   ============================================= */
+
+let savedCommentIds = new Set(); // comment ids saved by current user
+
+// ── Toast feedback ──────────────────────────
+const saveToast = (() => {
+  const el = document.createElement('div');
+  el.id = 'save-toast';
+  document.body.appendChild(el);
+  let timer;
+  return (msg) => {
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(timer);
+    timer = setTimeout(() => el.classList.remove('show'), 2200);
+  };
+})();
+
+// ── Badge helpers ────────────────────────────
+const collectionBadge = document.getElementById('collection-badge');
+
+function updateBadge(count) {
+  if (count > 0) {
+    collectionBadge.textContent = count > 99 ? '99+' : count;
+    collectionBadge.classList.remove('hidden');
+    collectionBadge.classList.remove('bump');
+    void collectionBadge.offsetWidth; // reflow to restart animation
+    collectionBadge.classList.add('bump');
+  } else {
+    collectionBadge.classList.add('hidden');
+  }
+}
+
+// ── Load saved comment IDs for logged-in user ──
+async function loadSavedCommentIds() {
+  if (!isAdmin) { savedCommentIds = new Set(); updateBadge(0); return; }
+  const { data, error } = await db
+    .from('saved_comments')
+    .select('comment_id');
+  if (error) { console.error('[Saved] load error', error); return; }
+  savedCommentIds = new Set((data || []).map(r => r.comment_id));
+  updateBadge(savedCommentIds.size);
+  // Sync all visible save buttons
+  syncAllSaveButtons();
+}
+
+// ── Sync button state to match DB ───────────
+function syncAllSaveButtons() {
+  document.querySelectorAll('.btn-save-comment').forEach(btn => {
+    const cid = btn.dataset.commentId;
+    if (savedCommentIds.has(cid)) {
+      btn.textContent = '✓ Saved';
+      btn.classList.add('saved');
+    } else {
+      btn.textContent = 'Save';
+      btn.classList.remove('saved');
+    }
+  });
+}
+
+// ── Save a comment ───────────────────────────
+async function saveComment_collection(commentId, btn) {
+  btn.classList.add('saving');
+
+  const { data: { session } } = await db.auth.getSession();
+  if (!session) { btn.classList.remove('saving'); return; }
+
+  const { error } = await db.from('saved_comments').insert({
+    user_id:    session.user.id,
+    comment_id: commentId
+  });
+
+  btn.classList.remove('saving');
+  if (error) {
+    console.error('[Saved] insert error', error);
+    saveToast('Could not save comment.');
+    return;
+  }
+  savedCommentIds.add(commentId);
+  btn.textContent = '✓ Saved';
+  btn.classList.add('saved');
+  updateBadge(savedCommentIds.size);
+  saveToast('Added to your collection ✓');
+}
+
+// ── Unsave a comment ─────────────────────────
+async function unsaveComment_collection(commentId) {
+  const { error } = await db
+    .from('saved_comments')
+    .delete()
+    .eq('comment_id', commentId);
+  if (error) { console.error('[Saved] delete error', error); return false; }
+  savedCommentIds.delete(commentId);
+  updateBadge(savedCommentIds.size);
+  // Update any visible button for this comment
+  document.querySelectorAll(`.btn-save-comment[data-comment-id="${commentId}"]`).forEach(btn => {
+    btn.textContent = 'Save';
+    btn.classList.remove('saved');
+  });
+  return true;
+}
+
+// ── Attach save button to a comment element ──
+function attachSaveButton(commentEl, commentId) {
+  if (!commentId) return;
+  // Don't add twice
+  if (commentEl.querySelector('.btn-save-comment')) return;
+
+  const btn = document.createElement('button');
+  btn.className = 'btn-save-comment';
+  btn.dataset.commentId = commentId;
+
+  if (savedCommentIds.has(commentId)) {
+    btn.textContent = '✓ Saved';
+    btn.classList.add('saved');
+  } else {
+    btn.textContent = 'Save';
+  }
+
+  btn.addEventListener('click', () => {
+    if (btn.classList.contains('saved') || btn.classList.contains('saving')) return;
+    saveComment_collection(commentId, btn);
+  });
+
+  commentEl.appendChild(btn);
+}
+
+// ── Collection button → navigate to collection page ──
+document.getElementById('collection-btn').addEventListener('click', () => {
+  const SITE_BASE = location.hostname === 'mokawonka.github.io'
+    ? `${location.origin}/lemonade`
+    : location.origin;
+  window.location.href = `${SITE_BASE}/collection.html`;
+});
+
+// ── Re-load saved IDs on auth state change ───
+// (hook into existing onAuthStateChange — add this line inside your existing handler,
+//  just after isAdmin is set)
+//   loadSavedCommentIds();
+// OR add a second listener here:
+db.auth.onAuthStateChange(() => loadSavedCommentIds());
+
+/* =============================================
    STATE
    ============================================= */
 let isAdmin       = false;
@@ -906,7 +1050,13 @@ function scheduleAIComments(postId, postHtml) {
         created_at: new Date().toISOString()
       }));
 
-      const { error } = await db.from('comments').insert(rows);
+      const { data: insertedComments, error } = await db.from('comments').insert(rows).select();
+
+      // Then map ids back onto the comments array before rendering:
+      if (insertedComments) {
+        insertedComments.forEach((row, i) => { if (comments[i]) comments[i].id = row.id; });
+      }
+
       if (error) throw error;
 
       hideCommentsStatus(postId);
@@ -1269,6 +1419,7 @@ async function fetchComments(postId) {
 function buildCommentEl(comment) {
   const el = document.createElement('div');
   el.className = 'ai-comment';
+  el.dataset.commentId = comment.id || '';         // ← store id on element
   el.style.setProperty('--comment-color', comment.persona_color);
 
   const dateStr = new Date(comment.created_at).toLocaleDateString('en-US', {
@@ -1277,11 +1428,20 @@ function buildCommentEl(comment) {
 
   el.innerHTML = `
     <div class="ai-comment-header">
-      <span class="ai-comment-name persona-name" data-persona="${escapeHtml(comment.persona_name)}" style="color:${escapeHtml(comment.persona_color)}; cursor:pointer;"> ${escapeHtml(comment.persona_name)}</span>
+      <span class="ai-comment-name persona-name" data-persona="${escapeHtml(comment.persona_name)}"
+            style="color:${escapeHtml(comment.persona_color)}; cursor:pointer;">
+        ${escapeHtml(comment.persona_name)}
+      </span>
       <span class="ai-comment-date">${dateStr}</span>
     </div>
     <div class="ai-comment-body">${escapeHtml(comment.content)}</div>
   `;
+
+  // Save button — only when user is signed in
+  if (isAdmin && comment.id) {
+    attachSaveButton(el, comment.id);
+  }
+
   return el;
 }
 

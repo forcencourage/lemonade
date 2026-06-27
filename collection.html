@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Collection</title>
+  <link rel="icon" href="./favicon.ico">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #fff;
+      color: #111;
+      min-height: 100vh;
+    }
+
+    /* ── Navbar ── */
+    .col-nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: #fff;
+      border-bottom: 1px solid #e8e8e8;
+      padding: 0 24px;
+    }
+    .col-nav-inner {
+      max-width: 680px;
+      margin: 0 auto;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .col-back {
+      background: none;
+      border: none;
+      font-family: inherit;
+      font-size: 13px;
+      color: #555;
+      cursor: pointer;
+      padding: 6px 0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: color 150ms;
+    }
+    .col-back:hover { color: #000; }
+    .col-title {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: .01em;
+    }
+    .col-count {
+      font-size: 12px;
+      color: #888;
+      font-weight: 400;
+    }
+
+    /* ── Visibility helpers ── */
+    /* We handle show/hide entirely via JS — no .hidden class on initial HTML */
+    .u-hidden { display: none !important; }
+
+    /* ── Auth wall ── */
+    #auth-wall {
+      max-width: 400px;
+      margin: 100px auto;
+      text-align: center;
+      padding: 0 24px;
+    }
+    #auth-wall h2 { font-size: 18px; margin-bottom: 8px; }
+    #auth-wall p  { font-size: 14px; color: #777; margin-bottom: 28px; }
+    .auth-form input {
+      width: 100%;
+      border: 1.5px solid #ddd;
+      border-radius: 8px;
+      padding: 9px 14px;
+      font-size: 14px;
+      font-family: inherit;
+      outline: none;
+      margin-bottom: 10px;
+      transition: border-color 160ms;
+    }
+    .auth-form input:focus { border-color: #000; }
+    .auth-form button {
+      width: 100%;
+      background: #000;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px;
+      font-size: 14px;
+      font-family: inherit;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 150ms;
+    }
+    .auth-form button:disabled { opacity: .5; }
+    .auth-error {
+      font-size: 13px;
+      color: #c00;
+      margin-top: 8px;
+    }
+
+    /* ── Main ── */
+    #col-main {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 40px 24px 80px;
+    }
+
+    /* ── Empty state ── */
+    #col-empty {
+      text-align: center;
+      padding: 80px 0;
+      color: #aaa;
+      font-size: 15px;
+    }
+    #col-empty span { display: block; font-size: 2rem; margin-bottom: 12px; }
+
+    /* ── Saved comment card ── */
+    .saved-card {
+      border-bottom: 1px solid #ebebeb;
+      padding: 28px 0;
+    }
+    .saved-card:last-child { border-bottom: none; }
+
+    /* Post context — very discreet */
+    .saved-post-context {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .saved-post-excerpt {
+      font-size: 12px;
+      color: #bbb;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 420px;
+    }
+    .saved-post-link {
+      font-size: 11px;
+      color: #ccc;
+      text-decoration: none;
+      flex-shrink: 0;
+      transition: color 150ms;
+    }
+    .saved-post-link:hover { color: #666; }
+
+    /* Comment content — black & white */
+    .saved-comment-body {
+      font-size: 15px;
+      line-height: 1.65;
+      color: #111;
+    }
+
+    /* Date + remove row */
+    .saved-comment-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 14px;
+    }
+    .saved-comment-date {
+      font-size: 11px;
+      color: #ccc;
+    }
+    .btn-unsave {
+      background: none;
+      border: 1px solid #ddd;
+      color: #bbb;
+      font-size: 11px;
+      font-family: inherit;
+      padding: 4px 12px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: border-color 150ms, color 150ms;
+    }
+    .btn-unsave:hover {
+      border-color: #e00;
+      color: #e00;
+    }
+
+    /* ── Loading spinner ── */
+    #col-loading {
+      text-align: center;
+      padding: 60px 0;
+      color: #ccc;
+      font-size: 14px;
+    }
+    .spinner {
+      display: inline-block;
+      width: 20px;
+      height: 20px;
+      border: 2px solid #eee;
+      border-top-color: #999;
+      border-radius: 50%;
+      animation: spin 700ms linear infinite;
+      vertical-align: middle;
+      margin-right: 8px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Toast ── */
+    #col-toast {
+      position: fixed;
+      bottom: 28px;
+      left: 50%;
+      transform: translateX(-50%) translateY(12px);
+      background: #111;
+      color: #fff;
+      font-size: 13px;
+      padding: 9px 20px;
+      border-radius: 999px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 220ms ease, transform 220ms ease;
+      z-index: 9999;
+      white-space: nowrap;
+    }
+    #col-toast.show {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navbar -->
+  <nav class="col-nav">
+    <div class="col-nav-inner">
+      <button class="col-back" id="col-back-btn">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+          <path d="M9 2L4 7l5 5" stroke="currentColor" stroke-width="1.6"
+                stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        All posts
+      </button>
+      <span class="col-title">
+        Collection
+        <span class="col-count" id="col-count"></span>
+      </span>
+    </div>
+  </nav>
+
+  <!--
+    IMPORTANT: both #auth-wall and #col-main start hidden via u-hidden.
+    JS shows exactly one of them once the auth session is resolved.
+    This prevents any flash of wrong content.
+  -->
+  <div id="auth-wall" class="u-hidden">
+    <h2>Sign in to view your collection</h2>
+    <p>Your saved comments are private to your account.</p>
+    <div class="auth-form">
+      <input type="email" id="col-email" placeholder="Email" autocomplete="email">
+      <input type="password" id="col-pass" placeholder="Password" autocomplete="current-password">
+      <button id="col-login-btn">Sign in</button>
+      <p class="auth-error u-hidden" id="col-auth-error"></p>
+    </div>
+  </div>
+
+  <main id="col-main" class="u-hidden">
+    <div id="col-loading">
+      <span class="spinner"></span> Loading…
+    </div>
+    <div id="col-list"></div>
+    <div id="col-empty" class="u-hidden">
+      <span>📌</span>
+      No saved comments yet.<br>
+      Sign in and click <strong>Save</strong> under any AI comment.
+    </div>
+  </main>
+
+  <div id="col-toast"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script>
+    const SUPABASE_URL      = 'https://sdltggiedqstrsnvvjmj.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNkbHRnZ2llZHFzdHJzbnZ2am1qIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NjM0NDAsImV4cCI6MjA5MTEzOTQ0MH0.20Z2gkI2V50BOXdVwFuvm4SjPVVgP9QGdjNH7BLqCkI';
+    const SITE_BASE = location.hostname === 'mokawonka.github.io'
+      ? `${location.origin}/lemonade`
+      : location.origin;
+
+    const { createClient } = window.supabase;
+    const db = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    /* ── DOM refs ── */
+    const authWall    = document.getElementById('auth-wall');
+    const colMain     = document.getElementById('col-main');
+    const colList     = document.getElementById('col-list');
+    const colEmpty    = document.getElementById('col-empty');
+    const colLoading  = document.getElementById('col-loading');
+    const colCount    = document.getElementById('col-count');
+    const colBackBtn  = document.getElementById('col-back-btn');
+    const colLoginBtn = document.getElementById('col-login-btn');
+    const colEmail    = document.getElementById('col-email');
+    const colPass     = document.getElementById('col-pass');
+    const colAuthErr  = document.getElementById('col-auth-error');
+    const toast       = document.getElementById('col-toast');
+
+    /* ── Navigation ── */
+    colBackBtn.addEventListener('click', () => {
+      window.location.href = `${SITE_BASE}/`;
+    });
+
+    /* ── Toast ── */
+    let toastTimer;
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add('show');
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove('show'), 2200);
+    }
+
+    /* ── Login ── */
+    async function doLogin() {
+      colLoginBtn.disabled = true;
+      colLoginBtn.textContent = 'Signing in…';
+      colAuthErr.classList.add('u-hidden');
+      try {
+        const { error } = await db.auth.signInWithPassword({
+          email: colEmail.value.trim(),
+          password: colPass.value
+        });
+        if (error) throw error;
+        // onAuthStateChange will fire and show the collection
+      } catch {
+        colAuthErr.textContent = 'Incorrect email or password.';
+        colAuthErr.classList.remove('u-hidden');
+        colPass.value = '';
+      } finally {
+        colLoginBtn.disabled = false;
+        colLoginBtn.textContent = 'Sign in';
+      }
+    }
+
+    colLoginBtn.addEventListener('click', doLogin);
+    colPass.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+    colEmail.addEventListener('keydown', e => { if (e.key === 'Enter') colPass.focus(); });
+
+    /* ── Helpers ── */
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function extractPlainExcerpt(html) {
+      if (!html) return '';
+      const div = document.createElement('div');
+      div.innerHTML = html;
+      div.querySelectorAll('img, iframe, video, figure, .ql-tweet').forEach(el => el.remove());
+      const text = (div.textContent || '').replace(/\s+/g, ' ').trim();
+      return text.length > 80 ? text.slice(0, 80).trimEnd() + '…' : text;
+    }
+
+    /* ── Build a saved comment card ── */
+    function buildCard(row) {
+      const comment = row.comments;
+      const post    = comment?.posts;
+
+      const card = document.createElement('div');
+      card.className = 'saved-card';
+      card.dataset.savedId   = row.id;
+      card.dataset.commentId = row.comment_id;
+
+      const excerpt   = extractPlainExcerpt(post?.content || '');
+      const postHref  = post?.id ? `${SITE_BASE}/post/${post.id}` : '#';
+      const savedDate = new Date(row.saved_at).toLocaleDateString('en-US', {
+        year: 'numeric', month: 'long', day: 'numeric'
+      });
+
+      card.innerHTML = `
+        <div class="saved-post-context">
+          <span class="saved-post-excerpt">${escapeHtml(excerpt || 'Post')}</span>
+          <a class="saved-post-link" href="${escapeHtml(postHref)}" title="View original post">↗</a>
+        </div>
+        <div class="saved-comment-body">${escapeHtml(comment?.content || '')}</div>
+        <div class="saved-comment-footer">
+          <span class="saved-comment-date">Saved ${savedDate}</span>
+          <button class="btn-unsave">Remove</button>
+        </div>
+      `;
+
+      card.querySelector('.btn-unsave').addEventListener('click', () => removeCard(row.id, card));
+      return card;
+    }
+
+    /* ── Remove a saved comment ── */
+    async function removeCard(savedId, cardEl) {
+      cardEl.style.opacity        = '0.4';
+      cardEl.style.pointerEvents  = 'none';
+
+      const { error } = await db
+        .from('saved_comments')
+        .delete()
+        .eq('id', savedId);
+
+      if (error) {
+        cardEl.style.opacity       = '';
+        cardEl.style.pointerEvents = '';
+        showToast('Could not remove comment.');
+        return;
+      }
+
+      cardEl.style.transition = 'opacity 200ms ease, max-height 300ms ease, padding 300ms ease';
+      cardEl.style.maxHeight  = cardEl.offsetHeight + 'px';
+      requestAnimationFrame(() => {
+        cardEl.style.opacity   = '0';
+        cardEl.style.maxHeight = '0';
+        cardEl.style.overflow  = 'hidden';
+        cardEl.style.padding   = '0';
+      });
+      setTimeout(() => {
+        cardEl.remove();
+        const remaining = colList.querySelectorAll('.saved-card').length;
+        colCount.textContent = remaining ? `· ${remaining}` : '';
+        if (!remaining) colEmpty.classList.remove('u-hidden');
+      }, 300);
+
+      showToast('Removed from collection');
+    }
+
+    /* ── Load saved comments ── */
+    let collectionLoaded = false; // guard against double-fire
+
+    async function loadCollection() {
+      if (collectionLoaded) return;
+      collectionLoaded = true;
+
+      colLoading.classList.remove('u-hidden');
+      colList.innerHTML = '';
+      colEmpty.classList.add('u-hidden');
+
+      try {
+        const { data, error } = await db
+          .from('saved_comments')
+          .select(`
+            id,
+            comment_id,
+            saved_at,
+            comments (
+              id,
+              content,
+              post_id,
+              posts (
+                id,
+                content
+              )
+            )
+          `)
+          .order('saved_at', { ascending: false });
+
+        if (error) throw error;
+
+        const rows = (data || []).filter(r => r.comments);
+
+        colCount.textContent = rows.length ? `· ${rows.length}` : '';
+        rows.forEach(row => colList.appendChild(buildCard(row)));
+
+        if (!rows.length) colEmpty.classList.remove('u-hidden');
+
+      } catch (err) {
+        console.error('[Collection] load error:', err);
+        colList.innerHTML = `<p style="color:#aaa;text-align:center;padding:40px 0;">Failed to load collection.</p>`;
+      } finally {
+        colLoading.classList.add('u-hidden');
+      }
+    }
+
+    /* ── Auth state — resolves exactly once on load ── */
+    db.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        authWall.classList.add('u-hidden');
+        colMain.classList.remove('u-hidden');
+        loadCollection();
+      } else {
+        colMain.classList.add('u-hidden');
+        authWall.classList.remove('u-hidden');
+        // Reset guard so re-login loads fresh data
+        collectionLoaded = false;
+        colList.innerHTML = '';
+      }
+    });
+  </script>
+</body>
+</html>
