@@ -291,6 +291,7 @@ const quill = new Quill('#quill-editor', {
       container: [
         [{ header: [2, 3, false] }],
         ['bold', 'italic', 'underline', 'strike'],
+        [{ align: [] }],
         ['blockquote', 'code-block'],
         [{ list: 'ordered' }, { list: 'bullet' }],
         ['link', 'image', 'video', 'tweet'],
