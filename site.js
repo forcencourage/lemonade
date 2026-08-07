@@ -143,7 +143,7 @@ function attachSaveButton(commentEl, commentId) {
 
 // ── Collection button → navigate to collection page ──
 document.getElementById('collection-btn').addEventListener('click', () => {
-  const SITE_BASE = location.hostname === 'mokawonka.github.io'
+  const SITE_BASE = location.hostname === 'forcencourage.github.io'
     ? `${location.origin}/lemonade`
     : location.origin;
   window.location.href = `${SITE_BASE}/collection.html`;
@@ -2382,7 +2382,7 @@ shareModalClose.addEventListener('click', closeShareModal);
 shareModal.addEventListener('click', e => { if (e.target === shareModal) closeShareModal(); });
 
 function openShareModal(postId) {
-  const SITE_BASE = location.hostname === 'mokawonka.github.io'
+  const SITE_BASE = location.hostname === 'forcencourage.github.io'
   ? `${location.origin}/lemonade`
   : location.origin;
 
@@ -2700,7 +2700,7 @@ async function loadMorePanelTitles() {
     }
 
     // Always use the GitHub Pages base — works on both localhost and production
-    const SITE_BASE = 'https://mokawonka.github.io/lemonade';
+    const SITE_BASE = 'https://forcencourage.github.io/lemonade';
 
     // Detect active post ID from URL
     const currentPostId = (() => {
@@ -3162,7 +3162,7 @@ async function goToRandomPost(btn) {
     if (error || !data || !data.length) return;
 
     const pick = data[Math.floor(Math.random() * data.length)];
-    const SITE_BASE = location.hostname === 'mokawonka.github.io'
+    const SITE_BASE = location.hostname === 'forcencourage.github.io'
       ? `${location.origin}/lemonade`
       : location.origin;
 
