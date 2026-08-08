@@ -141,12 +141,147 @@ function attachSaveButton(commentEl, commentId) {
   commentEl.appendChild(btn);
 }
 
-// ── Collection button → navigate to collection page ──
-document.getElementById('collection-btn').addEventListener('click', () => {
-  const SITE_BASE = location.hostname === 'forcencourage.github.io'
+// ── Collection button → dropdown (if logged in + has saves) or direct nav ──
+function getSiteBase() {
+  return location.hostname === 'mokawonka.github.io'
     ? `${location.origin}/lemonade`
     : location.origin;
-  window.location.href = `${SITE_BASE}/collection.html`;
+}
+
+const collectionWrap     = document.getElementById('collection-dropdown-wrap');
+const collectionDropdown = document.getElementById('collection-dropdown');
+
+function closeCollectionDropdown() {
+  collectionDropdown.classList.add('hidden');
+  collectionWrap.classList.remove('open');
+}
+
+document.getElementById('collection-btn').addEventListener('click', (e) => {
+  if (isAdmin && savedCommentIds.size > 0) {
+    e.stopPropagation();
+    const isOpen = !collectionDropdown.classList.contains('hidden');
+    if (isOpen) {
+      closeCollectionDropdown();
+    } else {
+      collectionDropdown.classList.remove('hidden');
+      collectionWrap.classList.add('open');
+    }
+  } else {
+    window.location.href = `${getSiteBase()}/collection.html`;
+  }
+});
+
+document.addEventListener('click', (e) => {
+  if (!collectionWrap.contains(e.target)) closeCollectionDropdown();
+});
+
+document.getElementById('collection-dropdown-mycollection').addEventListener('click', () => {
+  window.location.href = `${getSiteBase()}/collection.html`;
+});
+
+document.getElementById('collection-dropdown-randomcomment').addEventListener('click', () => {
+  closeCollectionDropdown();
+  openRandomCommentModal();
+});
+
+/* =============================================
+   RANDOM COMMENT MODAL
+   ============================================= */
+let randomCommentPool     = [];
+let randomCommentLastIdx  = -1;
+
+function extractPlainExcerptRC(html) {
+  if (!html) return '';
+  const div = document.createElement('div');
+  div.innerHTML = html;
+  div.querySelectorAll('img, iframe, video, figure, .ql-tweet').forEach(el => el.remove());
+  const text = (div.textContent || '').replace(/\s+/g, ' ').trim();
+  return text.length > 80 ? text.slice(0, 80).trimEnd() + '…' : text;
+}
+
+async function fetchRandomCommentPool() {
+  const { data, error } = await db
+    .from('saved_comments')
+    .select(`
+      id,
+      comment_id,
+      comments (
+        id,
+        content,
+        persona_name,
+        persona_color,
+        post_id,
+        posts ( id, content )
+      )
+    `);
+  if (error) { console.error('[RandomComment] load error:', error); return []; }
+  return (data || []).filter(r => r.comments);
+}
+
+function renderRandomComment() {
+  if (!randomCommentPool.length) return;
+
+  let idx = Math.floor(Math.random() * randomCommentPool.length);
+  if (randomCommentPool.length > 1) {
+    while (idx === randomCommentLastIdx) {
+      idx = Math.floor(Math.random() * randomCommentPool.length);
+    }
+  }
+  randomCommentLastIdx = idx;
+
+  const row     = randomCommentPool[idx];
+  const comment = row.comments;
+  const post    = comment?.posts;
+
+  document.getElementById('rc-post-excerpt').textContent =
+    extractPlainExcerptRC(post?.content || '') || 'Post';
+
+  const nameEl = document.getElementById('rc-comment-name');
+  nameEl.textContent = comment.persona_name || '';
+  nameEl.style.color = comment.persona_color || '#000';
+
+  document.getElementById('rc-comment-body').textContent = comment.content || '';
+
+  document.getElementById('rc-random-btn')
+    .classList.toggle('hidden', randomCommentPool.length <= 1);
+}
+
+async function openRandomCommentModal() {
+  const modal = document.getElementById('random-comment-modal');
+  modal.classList.remove('hidden');
+
+  document.getElementById('rc-post-excerpt').textContent = 'Loading…';
+  document.getElementById('rc-comment-name').textContent = '';
+  document.getElementById('rc-comment-body').textContent = '';
+  document.getElementById('rc-random-btn').classList.add('hidden');
+
+  randomCommentPool    = await fetchRandomCommentPool();
+  randomCommentLastIdx = -1;
+
+  if (!randomCommentPool.length) {
+    document.getElementById('rc-post-excerpt').textContent = '';
+    document.getElementById('rc-comment-body').textContent = 'No saved comments yet.';
+    return;
+  }
+
+  renderRandomComment();
+}
+
+document.getElementById('rc-random-btn').addEventListener('click', renderRandomComment);
+
+document.getElementById('random-comment-close').addEventListener('click', () => {
+  document.getElementById('random-comment-modal').classList.add('hidden');
+});
+document.getElementById('random-comment-modal').addEventListener('click', (e) => {
+  if (e.target.id === 'random-comment-modal') {
+    document.getElementById('random-comment-modal').classList.add('hidden');
+  }
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    document.getElementById('random-comment-modal').classList.add('hidden');
+    closeCollectionDropdown();
+  }
 });
 
 // ── Re-load saved IDs on auth state change ───
