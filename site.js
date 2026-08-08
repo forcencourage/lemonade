@@ -143,7 +143,7 @@ function attachSaveButton(commentEl, commentId) {
 
 // ── Collection button → dropdown (if logged in + has saves) or direct nav ──
 function getSiteBase() {
-  return location.hostname === 'mokawonka.github.io'
+  return location.hostname === 'forcencourage.github.io'
     ? `${location.origin}/lemonade`
     : location.origin;
 }
