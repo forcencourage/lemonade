@@ -190,14 +190,6 @@ document.getElementById('collection-dropdown-randomcomment').addEventListener('c
 let randomCommentPool     = [];
 let randomCommentLastIdx  = -1;
 
-function extractPlainExcerptRC(html) {
-  if (!html) return '';
-  const div = document.createElement('div');
-  div.innerHTML = html;
-  div.querySelectorAll('img, iframe, video, figure, .ql-tweet').forEach(el => el.remove());
-  const text = (div.textContent || '').replace(/\s+/g, ' ').trim();
-  return text.length > 80 ? text.slice(0, 80).trimEnd() + '…' : text;
-}
 
 async function fetchRandomCommentPool() {
   const { data, error } = await db
@@ -218,6 +210,26 @@ async function fetchRandomCommentPool() {
   return (data || []).filter(r => r.comments);
 }
 
+// Renders post content for the random-comment modal:
+// keeps text formatting + images, strips iframes/videos/tweet embeds.
+function extractRichContentRC(html) {
+  if (!html) return '';
+  const div = document.createElement('div');
+  div.innerHTML = html;
+
+  div.querySelectorAll('iframe, video, .ql-tweet').forEach(el => el.remove());
+
+  div.querySelectorAll('img').forEach(img => {
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.style.maxWidth = '100%';
+    img.style.borderRadius = '8px';
+    img.style.margin = '6px 0';
+  });
+
+  return div.innerHTML.trim();
+}
+
 function renderRandomComment() {
   if (!randomCommentPool.length) return;
 
@@ -233,8 +245,8 @@ function renderRandomComment() {
   const comment = row.comments;
   const post    = comment?.posts;
 
-  document.getElementById('rc-post-excerpt').textContent =
-    extractPlainExcerptRC(post?.content || '') || 'Post';
+    document.getElementById('rc-post-full').innerHTML =
+  extractRichContentRC(post?.content || '') || 'No content';
 
   const nameEl = document.getElementById('rc-comment-name');
   nameEl.textContent = comment.persona_name || '';
@@ -250,7 +262,7 @@ async function openRandomCommentModal() {
   const modal = document.getElementById('random-comment-modal');
   modal.classList.remove('hidden');
 
-  document.getElementById('rc-post-excerpt').textContent = 'Loading…';
+  document.getElementById('rc-post-full').textContent = 'Loading…';
   document.getElementById('rc-comment-name').textContent = '';
   document.getElementById('rc-comment-body').textContent = '';
   document.getElementById('rc-random-btn').classList.add('hidden');
@@ -259,7 +271,7 @@ async function openRandomCommentModal() {
   randomCommentLastIdx = -1;
 
   if (!randomCommentPool.length) {
-    document.getElementById('rc-post-excerpt').textContent = '';
+    document.getElementById('rc-post-full').textContent = '';
     document.getElementById('rc-comment-body').textContent = 'No saved comments yet.';
     return;
   }
