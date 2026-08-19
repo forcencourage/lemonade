@@ -3330,6 +3330,205 @@ function attachRandomBtn(btn) {
 
 attachRandomBtn(document.getElementById('random-btn'));
 
+/* =============================================
+   VOCABULARY PANEL
+   ============================================= */
+const vocabPanel      = document.getElementById('vocab-panel');
+const vocabTrack       = document.getElementById('vocab-marquee-track');
+const vocabViewport    = document.getElementById('vocab-marquee-viewport');
+const vocabEmpty       = document.getElementById('vocab-empty');
+const vocabAddBtn      = document.getElementById('vocab-add-btn');
+const vocabAddPopover  = document.getElementById('vocab-add-popover');
+const vocabWordInput   = document.getElementById('vocab-word-input');
+const vocabDefInput    = document.getElementById('vocab-def-input');
+const vocabAddSave     = document.getElementById('vocab-add-save');
+const vocabAddCancel   = document.getElementById('vocab-add-cancel');
+const vocabAddError    = document.getElementById('vocab-add-error');
+const vocabTooltip     = document.getElementById('vocab-tooltip');
+
+let vocabWords = [];
+
+// Inject the keyframes once — duration is set dynamically per render
+const vocabStyleTag = document.createElement('style');
+document.head.appendChild(vocabStyleTag);
+vocabStyleTag.textContent = `
+@keyframes vocab-scroll {
+  from { transform: translateY(0); }
+  to   { transform: translateY(-50%); }
+}`;
+
+async function loadVocabWords() {
+  if (!isAdmin) return;
+  const { data, error } = await db
+    .from('vocabulary')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) { console.error('[Vocab] load error:', error); return; }
+  vocabWords = data || [];
+  renderVocabMarquee();
+}
+
+function renderVocabMarquee() {
+  vocabTrack.innerHTML = '';
+  vocabTrack.style.animation = 'none';
+
+  if (!vocabWords.length) {
+    vocabEmpty.classList.remove('hidden');
+    vocabViewport.classList.add('hidden');
+    return;
+  }
+  vocabEmpty.classList.add('hidden');
+  vocabViewport.classList.remove('hidden');
+
+  // Render the list twice back-to-back so the loop is seamless
+  const buildItems = () => vocabWords.forEach(w => {
+    const li = document.createElement('li');
+    li.className = 'vocab-word';
+    li.textContent = w.word;
+    li.dataset.definition = w.definition;
+    li.dataset.id = w.id;
+    vocabTrack.appendChild(li);
+  });
+  buildItems();
+  buildItems();
+
+  requestAnimationFrame(() => {
+    const halfHeight = vocabTrack.scrollHeight / 2;
+    const duration = Math.max(halfHeight / 18, 12); // ~18px/sec, floor 12s
+    vocabTrack.style.animation = `vocab-scroll ${duration}s linear infinite`;
+  });
+}
+
+// ── Hover tooltip (with delete) ──
+const vocabTooltipDef    = document.getElementById('vocab-tooltip-def');
+const vocabTooltipDelete = document.getElementById('vocab-tooltip-delete');
+
+let vocabTooltipHideTimer = null;
+let vocabTooltipCurrentId = null;
+
+function showVocabTooltip(li) {
+  clearTimeout(vocabTooltipHideTimer);
+  vocabTooltipCurrentId = li.dataset.id;
+  vocabTooltipDef.textContent = li.dataset.definition || '';
+  vocabTooltipDelete.disabled = false;
+  vocabTooltipDelete.textContent = 'Delete word';
+  vocabTooltip.classList.remove('hidden');
+  positionVocabTooltip(li);
+}
+
+function scheduleHideVocabTooltip() {
+  clearTimeout(vocabTooltipHideTimer);
+  vocabTooltipHideTimer = setTimeout(() => {
+    vocabTooltip.classList.add('hidden');
+    vocabTooltipCurrentId = null;
+  }, 150);
+}
+
+vocabTrack.addEventListener('mouseover', e => {
+  const li = e.target.closest('.vocab-word');
+  if (!li) return;
+  showVocabTooltip(li);
+});
+vocabTrack.addEventListener('mousemove', e => {
+  const li = e.target.closest('.vocab-word');
+  if (li && li.dataset.id === vocabTooltipCurrentId) positionVocabTooltip(li);
+});
+vocabTrack.addEventListener('mouseout', e => {
+  if (!e.target.closest('.vocab-word')) return;
+  scheduleHideVocabTooltip();
+});
+
+// Keep tooltip open while hovered, close when leaving it
+vocabTooltip.addEventListener('mouseenter', () => clearTimeout(vocabTooltipHideTimer));
+vocabTooltip.addEventListener('mouseleave', scheduleHideVocabTooltip);
+
+vocabTooltipDelete.addEventListener('click', async () => {
+  if (!vocabTooltipCurrentId) return;
+  vocabTooltipDelete.disabled = true;
+  vocabTooltipDelete.textContent = 'Deleting…';
+  try {
+    const { error } = await db.from('vocabulary').delete().eq('id', vocabTooltipCurrentId);
+    if (error) throw error;
+    vocabTooltip.classList.add('hidden');
+    vocabTooltipCurrentId = null;
+    await loadVocabWords();
+  } catch (err) {
+    console.error('[Vocab] delete error:', err);
+    vocabTooltipDelete.disabled = false;
+    vocabTooltipDelete.textContent = 'Delete failed — retry';
+  }
+});
+
+function positionVocabTooltip(li) {
+  const rect = li.getBoundingClientRect();
+  const panelRect = vocabPanel.getBoundingClientRect();
+  vocabTooltip.style.left = (panelRect.right + 10) + 'px';
+  vocabTooltip.style.top  = Math.max(8, rect.top - 4) + 'px';
+}
+
+// ── Add-word popover ──
+vocabAddBtn.addEventListener('click', () => {
+  vocabAddError.classList.add('hidden');
+  vocabWordInput.value = '';
+  vocabDefInput.value = '';
+  vocabAddPopover.classList.toggle('hidden');
+  if (!vocabAddPopover.classList.contains('hidden')) {
+    setTimeout(() => vocabWordInput.focus(), 30);
+  }
+});
+
+vocabAddCancel.addEventListener('click', () => vocabAddPopover.classList.add('hidden'));
+
+document.addEventListener('click', e => {
+  if (!vocabAddPopover.classList.contains('hidden') &&
+      !vocabAddPopover.contains(e.target) &&
+      e.target !== vocabAddBtn) {
+    vocabAddPopover.classList.add('hidden');
+  }
+});
+
+vocabAddSave.addEventListener('click', async () => {
+  const word = vocabWordInput.value.trim();
+  const definition = vocabDefInput.value.trim();
+  if (!word || !definition) {
+    vocabAddError.textContent = 'Please fill both fields.';
+    vocabAddError.classList.remove('hidden');
+    return;
+  }
+  vocabAddSave.disabled = true;
+  vocabAddSave.textContent = 'Adding…';
+  try {
+    const { error } = await db.from('vocabulary').insert([{
+      word, definition, author: currentUsername, created_at: new Date().toISOString()
+    }]);
+    if (error) throw error;
+    vocabAddPopover.classList.add('hidden');
+    await loadVocabWords();
+  } catch (err) {
+    console.error('[Vocab] insert error:', err);
+    vocabAddError.textContent = 'Could not add word.';
+    vocabAddError.classList.remove('hidden');
+  } finally {
+    vocabAddSave.disabled = false;
+    vocabAddSave.textContent = 'Add';
+  }
+});
+
+[vocabWordInput, vocabDefInput].forEach(inp => {
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') vocabAddSave.click();
+    if (e.key === 'Escape') vocabAddPopover.classList.add('hidden');
+  });
+});
+
+// ── Show/hide with auth state ──
+function syncVocabPanelVisibility() {
+  vocabPanel.classList.toggle('hidden', !isAdmin);
+  if (isAdmin) loadVocabWords();
+}
+
+db.auth.onAuthStateChange(() => syncVocabPanelVisibility());
+
 // =============================================
 //  INIT  — detect single-post view synchronously
 // =============================================
@@ -3368,4 +3567,6 @@ db.auth.getSession().then(() => {
   } else {
     applyFilters();
   }
+
+  syncVocabPanelVisibility();
 });

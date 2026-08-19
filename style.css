@@ -2258,3 +2258,205 @@ input[type="search"]::-webkit-search-cancel-button {
   font-size: 13px;
   width: 100%;
 }
+
+/* =============================================
+   VOCABULARY PANEL (left, desktop, admin-only)
+   ============================================= */
+#vocab-panel {
+  position: fixed;
+  top: var(--nav-h);
+  left: 0;
+  width: 108px;
+  height: calc(100vh - var(--nav-h));
+  /* background: linear-gradient(180deg, #fbf4e2, #f8efd9);
+  border-right: 1px solid #ecdfb8; */
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 2px 0 12px rgba(180, 150, 60, .05);
+}
+
+@media (max-width: 1199px) {
+  #vocab-panel { display: none !important; }
+}
+
+.vocab-inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  position: relative;
+}
+
+.vocab-header {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.1rem .85rem .75rem;
+  border-bottom: 1px solid #ecdfb8;
+}
+
+.vocab-label {
+  font-family: var(--font-serif);
+  font-size: .78rem;
+  letter-spacing: .05em;
+  color: #7a6a34;
+}
+
+.vocab-header {
+  position: relative;
+  flex-shrink: 0;
+  padding: 0;
+  border-bottom: 1px solid #ecdfb8;
+}
+
+.vocab-add-btn-full {
+  width: 100%;
+  height: 44px;
+  border: none;
+  background: #fffdf5;
+  color: #8a742f;
+  font-size: 1.35rem;
+  font-weight: 300;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 150ms ease, color 150ms ease;
+}
+.vocab-add-btn-full:hover {
+  background: #d4d4d4;
+  color: #000000;
+}
+.vocab-add-btn-full:active {
+  background: #dddddd;
+}
+
+/* Flyout popover, anchored right next to the top of the panel */
+.vocab-add-popover {
+  position: absolute;
+  top: .5rem;
+  left: 100%;
+  margin-left: 10px;
+  width: 240px;
+  background: #fffefb;
+  border: 1px solid #ecdfb8;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,.12);
+  padding: .85rem;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  z-index: 60;
+  animation: fadeIn 150ms ease;
+}
+
+.vocab-add-popover input {
+  border: 1px solid #ddd0a3;
+  border-radius: 8px;
+  padding: .4rem .65rem;
+  font-family: var(--font-sans);
+  font-size: .82rem;
+  outline: none;
+  background: #fffdf7;
+  transition: box-shadow 150ms ease;
+}
+.vocab-add-popover input:focus { box-shadow: 0 0 0 2px #d8c69055; }
+
+.vocab-add-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: .4rem;
+  margin-top: .1rem;
+}
+
+.vocab-add-error {
+  font-size: .72rem;
+  color: #c0392b;
+}
+
+/* Marquee */
+.vocab-marquee-viewport {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  mask-image: linear-gradient(to bottom, transparent 0, #000 8%, #000 92%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 8%, #000 92%, transparent 100%);
+}
+
+.vocab-marquee-track {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  will-change: transform;
+}
+
+#vocab-panel:hover .vocab-marquee-track {
+  animation-play-state: paused;
+}
+
+.vocab-word {
+  padding: .55rem .85rem;
+  font-size: .8rem;
+  color: black;
+  cursor: default;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-bottom: black;
+  transition: color 150ms ease, background 150ms ease;
+}
+.vocab-word:hover {
+  color: black;
+  background: white;
+}
+
+.vocab-empty {
+  text-align: center;
+  font-size: .75rem;
+  color: black;
+  padding: 1.5rem .5rem;
+}
+
+.vocab-tooltip {
+  position: fixed;
+  max-width: 220px;
+  background: white;
+  color: black;
+  font-size: .78rem;
+  line-height: 1.4;
+  padding: .6rem .7rem .55rem;
+  border-radius: 8px;
+  z-index: 500;
+  pointer-events: auto;
+  box-shadow: 0 6px 20px rgba(0,0,0,.2);
+}
+
+.vocab-tooltip-def {
+  margin: 0 0 .5rem;
+}
+
+.vocab-tooltip-delete {
+  display: block;
+  width: 100%;
+  background: white;
+  border: 1px solid rgba(255,255,255,.25);
+  color: #000000;
+  font-family: inherit;
+  font-size: .72rem;
+  font-weight: 500;
+  padding: .3rem .5rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease;
+}
+.vocab-tooltip-delete:hover {
+  background: white;
+  border-color: black;
+}
+.vocab-tooltip-delete:disabled {
+  opacity: .5;
+  cursor: default;
+}

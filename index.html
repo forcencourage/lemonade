@@ -312,6 +312,36 @@
     </div>
   </div>
 
+  <!-- VOCABULARY PANEL (desktop, admin only) -->
+  <aside id="vocab-panel" class="hidden" aria-label="Vocabulary">
+    <div class="vocab-inner">
+      <div class="vocab-header">
+        <button id="vocab-add-btn" class="vocab-add-btn-full" title="Add a word">+</button>
+
+        <div id="vocab-add-popover" class="vocab-add-popover hidden">
+          <input id="vocab-word-input" type="text" placeholder="Word" maxlength="60">
+          <input id="vocab-def-input" type="text" placeholder="Short definition" maxlength="200">
+          <div class="vocab-add-popover-actions">
+            <button id="vocab-add-cancel" class="btn-ghost btn-sm">Cancel</button>
+            <button id="vocab-add-save" class="btn-primary btn-sm">Add</button>
+          </div>
+          <p id="vocab-add-error" class="vocab-add-error hidden">Please fill both fields.</p>
+        </div>
+      </div>
+
+      <div class="vocab-marquee-viewport" id="vocab-marquee-viewport">
+        <ul class="vocab-marquee-track" id="vocab-marquee-track"></ul>
+      </div>
+
+      <p class="vocab-empty hidden" id="vocab-empty">No words yet.</p>
+    </div>
+  </aside>
+
+  <div id="vocab-tooltip" class="vocab-tooltip hidden">
+    <p id="vocab-tooltip-def" class="vocab-tooltip-def"></p>
+    <button id="vocab-tooltip-delete" class="vocab-tooltip-delete">Delete word</button>
+  </div>
+
   <script id="personalities-data" type="application/javascript">
     window.personalities = [
     {
