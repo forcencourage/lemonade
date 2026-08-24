@@ -1393,6 +1393,148 @@ function hideCommentsStatus(postId) {
 }
 
 /* =============================================
+   NOTE (private, author-only)
+   ============================================= */
+function buildNoteToggleShell(open) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'note-wrapper';
+
+  const toggle = document.createElement('button');
+  toggle.className = open ? 'comments-toggle note-toggle open' : 'comments-toggle note-toggle';
+  toggle.innerHTML = `
+    <span class="comments-toggle-label">Note</span>
+    <span class="comments-toggle-arrow">▼</span>
+  `;
+
+  const section = document.createElement('div');
+  section.className = open ? 'comments-section note-section open' : 'comments-section note-section';
+
+  toggle.addEventListener('click', () => {
+    const isOpen = section.classList.toggle('open');
+    toggle.classList.toggle('open', isOpen);
+  });
+
+  wrapper.appendChild(toggle);
+  wrapper.appendChild(section);
+  return { wrapper, section };
+}
+
+function renderNoteDisplay(section, postId, noteText) {
+  section.innerHTML = '';
+
+  const body = document.createElement('div');
+  body.className = 'note-display';
+  body.textContent = noteText;
+  section.appendChild(body);
+
+  const controls = document.createElement('div');
+  controls.className = 'note-controls';
+  controls.innerHTML = `
+    <button class="note-edit-btn">Edit</button>
+    <button class="note-delete-btn">Delete</button>
+  `;
+  section.appendChild(controls);
+
+  controls.querySelector('.note-edit-btn').addEventListener('click', () => {
+    renderNoteEditor(section, postId, noteText);
+  });
+  controls.querySelector('.note-delete-btn').addEventListener('click', () => {
+    deleteNote(postId, section);
+  });
+}
+
+function renderNoteEditor(section, postId, existingText = '') {
+  section.innerHTML = '';
+
+  const textarea = document.createElement('textarea');
+  textarea.className = 'note-textarea';
+  textarea.placeholder = 'Write a note…';
+  textarea.value = existingText;
+  section.appendChild(textarea);
+
+  const actions = document.createElement('div');
+  actions.className = 'note-actions';
+  actions.innerHTML = `
+    <button class="btn-ghost btn-sm note-cancel-btn">Cancel</button>
+    <button class="btn-primary btn-sm note-save-btn">Save</button>
+  `;
+  section.appendChild(actions);
+
+  setTimeout(() => textarea.focus(), 30);
+
+  actions.querySelector('.note-cancel-btn').addEventListener('click', () => {
+    if (existingText) {
+      renderNoteDisplay(section, postId, existingText);
+    } else {
+      section.closest('.note-wrapper')?.remove();
+    }
+  });
+
+  actions.querySelector('.note-save-btn').addEventListener('click', async () => {
+    const text = textarea.value.trim();
+    if (!text) { textarea.focus(); return; }
+
+    const saveBtn = actions.querySelector('.note-save-btn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Saving…';
+
+    try {
+      const { error } = await db.from('posts').update({ note: text }).eq('id', postId);
+      if (error) throw error;
+
+      const post = loadedPosts.find(p => String(p.id) === String(postId));
+      if (post) post.note = text;
+
+      renderNoteDisplay(section, postId, text);
+    } catch (err) {
+      console.error('[Note] save error:', err);
+      alert('Could not save note.');
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save';
+    }
+  });
+}
+
+async function deleteNote(postId, section) {
+  if (!confirm('Delete this note?')) return;
+  try {
+    const { error } = await db.from('posts').update({ note: null }).eq('id', postId);
+    if (error) throw error;
+
+    const post = loadedPosts.find(p => String(p.id) === String(postId));
+    if (post) post.note = null;
+
+    section.closest('.note-wrapper')?.remove();
+  } catch (err) {
+    console.error('[Note] delete error:', err);
+    alert('Could not delete note.');
+  }
+}
+
+/**
+ * Attaches the note section to a post card. Only rendered for the
+ * post's own author when signed in — invisible to everyone else.
+ */
+function appendNoteToCard(card, post, isOwner, openByDefault) {
+  if (!isOwner) return;
+
+  const { wrapper, section } = buildNoteToggleShell(openByDefault);
+
+  if (post.note) {
+    renderNoteDisplay(section, post.id, post.note);
+  } else {
+    const addBtn = document.createElement('button');
+    addBtn.className = 'btn-ghost btn-sm note-add-btn';
+    addBtn.textContent = '+ Add a note';
+    addBtn.addEventListener('click', () => renderNoteEditor(section, post.id, ''));
+    section.appendChild(addBtn);
+  }
+
+  const adminBar = card.querySelector('.post-admin-bar');
+  adminBar ? card.insertBefore(wrapper, adminBar) : card.appendChild(wrapper);
+}
+
+/* =============================================
    REGENERATE COMMENTS BUTTON
    ============================================= */
 
@@ -1771,6 +1913,7 @@ async function loadNextPage(isInitial = false, expectedVersion = null) {
       if (commentsSection) card.appendChild(commentsSection);
       postsFeed.appendChild(card);          
       if (post.summary) appendSummaryToCard(post.id, post.summary); 
+      appendNoteToCard(card, post, isAdmin && currentUsername === post.author, false);
       applyPostTruncation(card);
       if (!commentsSection && !post.no_ai && isAdmin && currentUsername === post.author) {
         showRegenerateButton(post.id, post.content || '');
@@ -1802,6 +1945,7 @@ async function reRenderCurrentPosts() {
     const commentsSection = await buildCommentsSection(post.id);
     if (commentsSection) card.appendChild(commentsSection);
     postsFeed.appendChild(card); 
+    appendNoteToCard(card, post, isAdmin && currentUsername === post.author, false);
     applyPostTruncation(card);
     if (!commentsSection && !post.no_ai && isAdmin && currentUsername === post.author) {
       showRegenerateButton(post.id, post.content || '');
@@ -2649,6 +2793,7 @@ async function renderSinglePost(postId) {
     }
     
     if (post.summary) appendSummaryToCard(post.id, post.summary, true);
+    appendNoteToCard(card, post, isAdmin && currentUsername === post.author, true);
 
     // Load comments expanded
     const comments = await fetchComments(postId);
