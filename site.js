@@ -320,6 +320,8 @@ let isPrivate = false;
 let isSinglePostView = false;
 let noAiComments = false;
 let videoSummaryEnabled = false;
+let isMathProof = false;
+let mathProofImageUrl = null;
 
 
 
@@ -441,7 +443,7 @@ const quill = new Quill('#quill-editor', {
         [{ align: [] }],
         ['blockquote', 'code-block'],
         [{ list: 'ordered' }, { list: 'bullet' }],
-        ['link', 'image', 'video', 'tweet'],
+        ['link', 'image', 'video', 'tweet', 'mathproof'],
         ['table'],
         ['clean']
       ],
@@ -449,6 +451,7 @@ const quill = new Quill('#quill-editor', {
         image: imageHandler,
         video: videoHandler,
         tweet: tweetHandler,
+        mathproof: mathProofHandler,
         table: function() {
           quill.getModule('table').insertTable(1, 2);
         }
@@ -456,6 +459,8 @@ const quill = new Quill('#quill-editor', {
     }
   }
 });
+
+document.querySelector('.ql-toolbar .ql-mathproof')?.setAttribute('title', 'Import a theorem & proof (AI analysis)');
 
 
 function tweetHandler() {
@@ -670,6 +675,53 @@ async function imageHandler() {
       alert('Image upload failed');
     }
   };
+}
+
+/* =============================================
+   MATH PROOF IMAGE IMPORT
+   ============================================= */
+async function mathProofHandler() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.click();
+  input.onchange = async () => {
+    const file = input.files[0];
+    if (!file) return;
+    try {
+      const range = quill.getSelection(true);
+      const placeholderText = 'Uploading proof…\n';
+      quill.insertText(range.index, placeholderText, 'user');
+      quill.setSelection(range.index + placeholderText.length);
+
+      const blob = await compressImageToBlob(file);
+      const publicUrl = await uploadImageToSupabase(blob);
+
+      quill.deleteText(range.index, placeholderText.length);
+      quill.insertEmbed(range.index, 'image', publicUrl);
+      quill.setSelection(range.index + 1);
+
+      isMathProof = true;
+      mathProofImageUrl = publicUrl;
+      updateMathProofToggleVisibility();
+    } catch (err) {
+      console.error('Math proof upload failed:', err);
+      alert('Image upload failed');
+    }
+  };
+}
+
+function updateMathProofToggleVisibility() {
+  const privateLabel = privateCheckbox.closest('.editor-toggle');
+  const noAiLabel     = noAiCheckbox.closest('.editor-toggle');
+  privateLabel?.classList.toggle('hidden', isMathProof);
+  noAiLabel?.classList.toggle('hidden', isMathProof);
+  if (isMathProof) {
+    isPrivate = false;
+    privateCheckbox.checked = false;
+    noAiComments = false;
+    noAiCheckbox.checked = false;
+  }
 }
 
 quill.clipboard.addMatcher(Node.TEXT_NODE, (node, delta) => {
@@ -958,6 +1010,7 @@ publishBtn.addEventListener('click', async () => {
         author: currentUsername,
         is_private: isPrivate,
         no_ai: noAiComments,
+        is_math_proof: isMathProof,
         created_at: new Date().toISOString()
       }]).select().single();
       if (error) throw error;
@@ -967,7 +1020,9 @@ publishBtn.addEventListener('click', async () => {
         // await notifySubscribers(postTitle, content);
       }
 
-      if (videoSummaryEnabled) {
+      if (insertedPost.is_math_proof) {
+        scheduleMathAnalysis(insertedPost.id, mathProofImageUrl);
+      } else if (videoSummaryEnabled) {
         scheduleVideoSummary(insertedPost.id, content);
       } else if (!insertedPost.no_ai) {
         scheduleAIComments(insertedPost.id, content);
@@ -987,6 +1042,9 @@ publishBtn.addEventListener('click', async () => {
     videoSummaryCheckbox.checked = false;
     videoSummaryLabel.classList.add('hidden');
     videoSummaryLabel.style.display = 'none';
+    isMathProof = false;
+    mathProofImageUrl = null;
+    updateMathProofToggleVisibility();
     await applyFilters();
 
   } catch (err) {
@@ -1228,6 +1286,96 @@ function scheduleAIComments(postId, postHtml) {
   }, AI_COMMENT_DELAY_MS);
 }
 
+/* =============================================
+   MATH PROOF ANALYSIS
+   ============================================= */
+function scheduleMathAnalysis(postId, imageUrl) {
+  if (!imageUrl) return;
+
+  setTimeout(async () => {
+    showCommentsStatus(postId, 'math-loading');
+
+    try {
+      const res = await fetch(
+        'https://sdltggiedqstrsnvvjmj.supabase.co/functions/v1/math-analysis',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          },
+          body: JSON.stringify({ imageUrl }),
+        }
+      );
+      const data = await res.json();
+      if (!data.beauty || !data.analogy) throw new Error(data.error || 'Incomplete analysis');
+
+      const analysis = { beauty: data.beauty, analogy: data.analogy };
+
+      const { error } = await db.from('posts').update({ math_analysis: analysis }).eq('id', postId);
+      if (error) throw error;
+
+      const post = loadedPosts.find(p => String(p.id) === String(postId));
+      if (post) post.math_analysis = analysis;
+
+      hideCommentsStatus(postId);
+      appendMathAnalysisToCard(postId, analysis, isSinglePostView);
+
+    } catch (err) {
+      console.error('[MathAnalysis] Failed:', err);
+      hideCommentsStatus(postId);
+      showCommentsStatus(postId, 'error');
+    }
+  }, AI_COMMENT_DELAY_MS);
+}
+
+function buildMathAnalysisSection(analysis, open = false) {
+  const wrapper = document.createElement('div');
+
+  const toggle = document.createElement('button');
+  toggle.className = open ? 'comments-toggle math-toggle open' : 'comments-toggle math-toggle';
+  toggle.innerHTML = `
+    <span class="comments-toggle-label">Proof insights</span>
+    <span class="comments-toggle-arrow">▼</span>
+  `;
+
+  const section = document.createElement('div');
+  section.className = open ? 'comments-section math-section open' : 'comments-section math-section';
+
+  const beautyHtml  = escapeHtml(analysis.beauty  || '').replace(/\n+/g, '<br><br>');
+  const analogyHtml = escapeHtml(analysis.analogy || '').replace(/\n+/g, '<br><br>');
+
+  section.innerHTML = `
+    <div class="math-block">
+      <div class="math-block-label"><span class="math-block-icon">∎</span>What makes this proof beautiful?</div>
+      <div class="math-block-body">${beautyHtml}</div>
+    </div>
+    <div class="math-block">
+      <div class="math-block-label"><span class="math-block-icon">⇌</span>An analogy beyond mathematics</div>
+      <div class="math-block-body">${analogyHtml}</div>
+    </div>
+  `;
+
+  toggle.addEventListener('click', () => {
+    const isOpen = section.classList.toggle('open');
+    toggle.classList.toggle('open', isOpen);
+  });
+
+  wrapper.appendChild(toggle);
+  wrapper.appendChild(section);
+  return wrapper;
+}
+
+function appendMathAnalysisToCard(postId, analysis, open = false) {
+  const card = document.querySelector(`#posts-feed [data-id="${postId}"]`);
+  if (!card) return;
+
+  card.querySelector('.math-section')?.closest('div')?.remove();
+
+  const section = buildMathAnalysisSection(analysis, open);
+  const adminBar = card.querySelector('.post-admin-bar');
+  adminBar ? card.insertBefore(section, adminBar) : card.appendChild(section);
+}
 
 /* =============================================
    VIDEO SUMMARY
@@ -1379,6 +1527,11 @@ function showCommentsStatus(postId, state) {
     el.innerHTML = `
       <span class="comments-status-icon">✕</span>
       <span>Error while generating comments</span>
+    `;
+  } else if (state === 'math-loading') {
+    el.innerHTML = `
+      <span class="comments-status-spinner"></span>
+      <span>Analyzing the proof's structure…</span>
     `;
   }
 
@@ -1909,13 +2062,14 @@ async function loadNextPage(isInitial = false, expectedVersion = null) {
 
     for (const post of postsToRender) {
       const card = buildPostCard(post);
-      const commentsSection = await buildCommentsSection(post.id);
+      const commentsSection = post.is_math_proof ? null : await buildCommentsSection(post.id);
       if (commentsSection) card.appendChild(commentsSection);
       postsFeed.appendChild(card);          
       if (post.summary) appendSummaryToCard(post.id, post.summary); 
+      if (post.is_math_proof && post.math_analysis) appendMathAnalysisToCard(post.id, post.math_analysis, false);
       appendNoteToCard(card, post, isAdmin && currentUsername === post.author, false);
       applyPostTruncation(card);
-      if (!commentsSection && !post.no_ai && isAdmin && currentUsername === post.author) {
+      if (!commentsSection && !post.no_ai && !post.is_math_proof && isAdmin && currentUsername === post.author) {
         showRegenerateButton(post.id, post.content || '');
       }
     }
@@ -1942,12 +2096,13 @@ async function reRenderCurrentPosts() {
   for (const post of loadedPosts) {
     const card = buildPostCard(post);
     if (post.summary) appendSummaryToCard(post.id, post.summary);
-    const commentsSection = await buildCommentsSection(post.id);
+    if (post.is_math_proof && post.math_analysis) appendMathAnalysisToCard(post.id, post.math_analysis, false);
+    const commentsSection = post.is_math_proof ? null : await buildCommentsSection(post.id);
     if (commentsSection) card.appendChild(commentsSection);
     postsFeed.appendChild(card); 
     appendNoteToCard(card, post, isAdmin && currentUsername === post.author, false);
     applyPostTruncation(card);
-    if (!commentsSection && !post.no_ai && isAdmin && currentUsername === post.author) {
+    if (!commentsSection && !post.no_ai && !post.is_math_proof && isAdmin && currentUsername === post.author) {
       showRegenerateButton(post.id, post.content || '');
     }
   }
@@ -2239,8 +2394,11 @@ async function editPost(post) {
   renderTagPills();
   publishBtn.textContent = 'Save changes';
   publishBtn.dataset.editId = post.id;
-}
 
+  isMathProof = !!post.is_math_proof;
+  mathProofImageUrl = isMathProof ? (extractImagesFromHtml(post.content || '')[0] || null) : null;
+  updateMathProofToggleVisibility();
+}
 /* =============================================
    LOAD MORE
    ============================================= */
@@ -2793,7 +2951,33 @@ async function renderSinglePost(postId) {
     }
     
     if (post.summary) appendSummaryToCard(post.id, post.summary, true);
+    if (post.is_math_proof && post.math_analysis) appendMathAnalysisToCard(post.id, post.math_analysis, true);
     appendNoteToCard(card, post, isAdmin && currentUsername === post.author, true);
+
+    // Load comments expanded (skip entirely for math-proof posts)
+    if (!post.is_math_proof) {
+      const comments = await fetchComments(postId);
+      if (comments.length) {
+        const wrapper = document.createElement('div');
+        const toggle = document.createElement('button');
+        toggle.className = 'comments-toggle open';
+        toggle.innerHTML = `
+          <span class="comments-toggle-label">Programs comments</span>
+          <span class="comments-toggle-count">(${comments.length})</span>
+          <span class="comments-toggle-arrow">▼</span>
+        `;
+        const section = document.createElement('div');
+        section.className = 'comments-section open';
+        comments.forEach(c => section.appendChild(buildCommentEl(c)));
+        toggle.addEventListener('click', () => {
+          const isOpen = section.classList.toggle('open');
+          toggle.classList.toggle('open', isOpen);
+        });
+        wrapper.appendChild(toggle);
+        wrapper.appendChild(section);
+        card.appendChild(wrapper);
+      }
+    }
 
     // Load comments expanded
     const comments = await fetchComments(postId);
