@@ -436,6 +436,9 @@ const quill = new Quill('#quill-editor', {
   placeholder: "What's on your mind…",
   modules: {
     table: true,
+    clipboard: {
+      matchVisual: false 
+    },
     toolbar: {
       container: [
         [{ header: [2, 3, false] }],
@@ -735,7 +738,8 @@ quill.clipboard.addMatcher(Node.TEXT_NODE, (node, delta) => {
   let match;
   while ((match = combined.exec(text)) !== null) {
     if (match.index > lastIndex) {
-      ops.push({ insert: text.slice(lastIndex, match.index) });
+      const slice = text.slice(lastIndex, match.index);
+      if (slice.length) ops.push({ insert: slice, attributes: delta.ops?.[0]?.attributes });
     }
 
     if (match[1]) {
@@ -749,9 +753,11 @@ quill.clipboard.addMatcher(Node.TEXT_NODE, (node, delta) => {
     lastIndex = match.index + match[0].length;
   }
 
-  if (lastIndex < text.length) ops.push({ insert: text.slice(lastIndex) });
+  if (lastIndex < text.length) ops.push({ insert: text.slice(lastIndex), attributes: delta.ops?.[0]?.attributes });
 
-  if (ops.length > 0) {
+
+  const foundEmbed = ops.some(op => typeof op.insert === 'object');
+  if (foundEmbed) {
     const newDelta = new quill.constructor.imports['delta']();
     ops.forEach(op => newDelta.push(op));
     return newDelta;
