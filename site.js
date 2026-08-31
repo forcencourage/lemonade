@@ -217,8 +217,8 @@ function extractRichContentRC(html) {
   const div = document.createElement('div');
   div.innerHTML = html;
 
-  div.querySelectorAll('iframe, video, .ql-tweet').forEach(el => el.remove());
-
+  div.querySelectorAll('iframe, video, .ql-tweet, .ql-math, .ql-imath').forEach(el => el.remove());
+  
   div.querySelectorAll('img').forEach(img => {
     img.loading = 'lazy';
     img.decoding = 'async';
@@ -428,6 +428,62 @@ TweetBlot.tagName   = 'div';
 TweetBlot.className = 'ql-tweet';
 Quill.register(TweetBlot);
 
+
+/* =============================================
+   CUSTOM MATH BLOT 
+   ============================================= */
+
+  const icons = Quill.import('ui/icons');
+  icons['math'] = `
+    <svg viewBox="0 0 18 18">
+      <text x="1" y="14" font-size="13" font-family="Georgia, serif" font-style="italic" fill="currentColor">∑</text>
+    </svg>
+  `;
+
+class MathBlot extends BlockEmbed {
+  static create(latex) {
+    const node = super.create();
+    node.dataset.latex = latex;
+    node.contentEditable = 'false';
+    node.style.cssText = 'margin:12px 0; overflow-x:auto;';
+    try {
+      katex.render(latex, node, { displayMode: true, throwOnError: false });
+    } catch (e) {
+      node.textContent = latex;
+    }
+    return node;
+  }
+  static value(node) { return node.dataset.latex; }
+}
+MathBlot.blotName  = 'math';
+MathBlot.tagName   = 'div';
+MathBlot.className = 'ql-math';
+Quill.register(MathBlot);
+
+/* =============================================
+   INLINE MATH BLOT — for $...$ (paste-detected)
+   ============================================= */
+const InlineEmbed = Quill.import('blots/embed');
+
+class InlineMathBlot extends InlineEmbed {
+  static create(latex) {
+    const node = super.create();
+    node.dataset.latex = latex;
+    node.contentEditable = 'false';
+    try {
+      katex.render(latex, node, { displayMode: false, throwOnError: false });
+    } catch (e) {
+      node.textContent = latex;
+    }
+    return node;
+  }
+  static value(node) { return node.dataset.latex; }
+}
+InlineMathBlot.blotName  = 'imath';
+InlineMathBlot.tagName   = 'span';
+InlineMathBlot.className = 'ql-imath';
+Quill.register(InlineMathBlot);
+
 /* =============================================
    QUILL SETUP
    ============================================= */
@@ -446,7 +502,7 @@ const quill = new Quill('#quill-editor', {
         [{ align: [] }],
         ['blockquote', 'code-block'],
         [{ list: 'ordered' }, { list: 'bullet' }],
-        ['link', 'image', 'video', 'tweet', 'mathproof'],
+        ['link', 'image', 'video', 'tweet', 'mathproof', 'math'],
         ['table'],
         ['clean']
       ],
@@ -454,6 +510,7 @@ const quill = new Quill('#quill-editor', {
         image: imageHandler,
         video: videoHandler,
         tweet: tweetHandler,
+        math: mathHandler,
         mathproof: mathProofHandler,
         table: function() {
           quill.getModule('table').insertTable(1, 2);
@@ -464,7 +521,15 @@ const quill = new Quill('#quill-editor', {
 });
 
 document.querySelector('.ql-toolbar .ql-mathproof')?.setAttribute('title', 'Import a theorem & proof (AI analysis)');
+document.querySelector('.ql-toolbar .ql-math')?.setAttribute('title', 'Insert equation (LaTeX)');
 
+function mathHandler() {
+  const latex = prompt('Enter LaTeX (display mode), e.g.\n\\text{Attention}(Q,K,V) = \\text{Softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V');
+  if (!latex) return;
+  const range = quill.getSelection(true);
+  quill.insertEmbed(range.index, 'math', latex, 'user');
+  quill.setSelection(range.index + 1);
+}
 
 function tweetHandler() {
   const tooltip = quill.theme.tooltip;
@@ -733,7 +798,7 @@ quill.clipboard.addMatcher(Node.TEXT_NODE, (node, delta) => {
   let lastIndex = 0;
 
   // Combined regex: YouTube first, then X/Twitter
-  const combined = /(?:(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([\w-]{11}))|(?:(https?:\/\/(?:www\.)?(?:twitter\.com|x\.com)\/\w+\/status\/\d+\S*))/g;
+  const combined = /(?:(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([\w-]{11}))|(?:(https?:\/\/(?:www\.)?(?:twitter\.com|x\.com)\/\w+\/status\/\d+\S*))|(?:\$\$([^\$]+?)\$\$)|(?:\$(?!\d)(\S(?:[^\$\n]*\S)?)\$)/g;
 
   let match;
   while ((match = combined.exec(text)) !== null) {
@@ -748,6 +813,12 @@ quill.clipboard.addMatcher(Node.TEXT_NODE, (node, delta) => {
     } else if (match[2]) {
       // X / Twitter
       ops.push({ insert: { tweet: match[2] } });
+    } else if (match[3]) {
+      // $$...$$ block math
+      ops.push({ insert: { math: match[3].trim() } });
+    } else if (match[4]) {
+      // $...$ inline math
+      ops.push({ insert: { imath: match[4].trim() } });
     }
 
     lastIndex = match.index + match[0].length;
@@ -1082,6 +1153,22 @@ function stripHtml(html) {
     }
   });
 
+  div.querySelectorAll('.ql-math').forEach(node => {
+    const latex = node.dataset.latex;
+    if (latex) {
+      const placeholder = document.createTextNode(`[Equation: ${latex}]\n`);
+      node.replaceWith(placeholder);
+    }
+  });
+
+  div.querySelectorAll('.ql-imath').forEach(node => {
+    const latex = node.dataset.latex;
+    if (latex) {
+      const placeholder = document.createTextNode(`[Equation: ${latex}]`);
+      node.replaceWith(placeholder);
+    }
+  });
+
   return div.textContent || div.innerText || '';
 }
 
@@ -1109,6 +1196,17 @@ function extractImagesFromHtml(html) {
   return [...div.querySelectorAll('img')]
     .map(img => img.src)
     .filter(src => src && src.startsWith('http'));
+}
+
+function renderMathNodes(container) {
+  container.querySelectorAll('.ql-math').forEach(node => {
+    const latex = node.dataset.latex;
+    if (latex) katex.render(latex, node, { displayMode: true, throwOnError: false });
+  });
+  container.querySelectorAll('.ql-imath').forEach(node => {
+    const latex = node.dataset.latex;
+    if (latex) katex.render(latex, node, { displayMode: false, throwOnError: false });
+  });
 }
 
 /* =============================================
