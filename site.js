@@ -524,12 +524,73 @@ document.querySelector('.ql-toolbar .ql-mathproof')?.setAttribute('title', 'Impo
 document.querySelector('.ql-toolbar .ql-math')?.setAttribute('title', 'Insert equation (LaTeX)');
 
 function mathHandler() {
-  const latex = prompt('Enter LaTeX (display mode), e.g.\n\\text{Attention}(Q,K,V) = \\text{Softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V');
-  if (!latex) return;
-  const range = quill.getSelection(true);
+  openMathModal();
+}
+
+/* =============================================
+   MATH EQUATION MODAL
+   ============================================= */
+const mathModal      = document.getElementById('math-modal');
+const mathLatexInput = document.getElementById('math-latex-input');
+const mathPreview    = document.getElementById('math-preview');
+const mathCancelBtn  = document.getElementById('math-cancel');
+const mathConfirmBtn = document.getElementById('math-confirm');
+
+let mathInsertRange = null;
+
+function openMathModal() {
+  // Capture the cursor position now — it will be lost once focus leaves the editor
+  mathInsertRange = quill.getSelection(true);
+
+  mathLatexInput.value = '';
+  mathPreview.innerHTML = '';
+  mathPreview.classList.remove('math-preview--error');
+  mathModal.classList.remove('hidden');
+  setTimeout(() => mathLatexInput.focus(), 50);
+}
+
+function closeMathModal() {
+  mathModal.classList.add('hidden');
+  mathInsertRange = null;
+}
+
+function renderMathPreview() {
+  const latex = mathLatexInput.value.trim();
+  mathPreview.classList.remove('math-preview--error');
+
+  if (!latex) {
+    mathPreview.innerHTML = '';
+    return;
+  }
+
+  try {
+    katex.render(latex, mathPreview, { displayMode: true, throwOnError: true });
+  } catch (e) {
+    mathPreview.textContent = 'Invalid LaTeX';
+    mathPreview.classList.add('math-preview--error');
+  }
+}
+
+mathLatexInput.addEventListener('input', renderMathPreview);
+
+mathCancelBtn.addEventListener('click', closeMathModal);
+mathModal.addEventListener('click', e => { if (e.target === mathModal) closeMathModal(); });
+
+mathLatexInput.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeMathModal();
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) mathConfirmBtn.click();
+});
+
+mathConfirmBtn.addEventListener('click', () => {
+  const latex = mathLatexInput.value.trim();
+  if (!latex) { mathLatexInput.focus(); return; }
+
+  const range = mathInsertRange || quill.getSelection(true);
   quill.insertEmbed(range.index, 'math', latex, 'user');
   quill.setSelection(range.index + 1);
-}
+
+  closeMathModal();
+});
 
 function tweetHandler() {
   const tooltip = quill.theme.tooltip;
