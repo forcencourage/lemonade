@@ -35,6 +35,7 @@
       <div class="collection-dropdown hidden" id="collection-dropdown">
         <button class="collection-dropdown-item" id="collection-dropdown-mycollection">My collection</button>
         <button class="collection-dropdown-item" id="collection-dropdown-randomcomment">Random comment</button>
+        <button class="collection-dropdown-item" id="collection-dropdown-ephemera">Ephemera</button>
       </div>
     </div>
     <div class="nav-right">
@@ -312,6 +313,31 @@
       </div>
 
       <button id="profile-save-btn" class="btn-primary profile-save-btn hidden">Save</button>
+    </div>
+  </div>
+
+  <!-- EPHEMERA MODAL -->
+  <div id="ephemera-modal" class="modal-overlay hidden">
+    <div id="ephemera-box">
+      <button id="ephemera-close" class="ephemera-close" title="Close">✕</button>
+      <div id="ephemera-body">
+        <aside id="ephemera-sidebar">
+          <div id="ephemera-sidebar-header">
+            <span>Ephemera</span>
+            <button id="ephemera-new-btn" title="New note">+</button>
+          </div>
+          <ul id="ephemera-list"></ul>
+        </aside>
+        <section id="ephemera-content">
+          <input id="ephemera-title-input" type="text" placeholder="Untitled" disabled>
+          <textarea id="ephemera-textarea" placeholder="Write something…" disabled></textarea>
+        </section>
+      </div>
+      <div id="ephemera-footer">
+        <span id="ephemera-status"></span>
+        <button id="ephemera-delete-btn" class="btn-ghost btn-sm">Delete</button>
+        <button id="ephemera-save-btn" class="btn-primary">Save</button>
+      </div>
     </div>
   </div>
 
