@@ -3335,33 +3335,6 @@ async function renderSinglePost(postId) {
       }
     }
 
-    // Load comments expanded
-    const comments = await fetchComments(postId);
-    if (comments.length) {
-      const wrapper = document.createElement('div');
-
-      const toggle = document.createElement('button');
-      toggle.className = 'comments-toggle open';
-      toggle.innerHTML = `
-        <span class="comments-toggle-label">Programs comments</span>
-        <span class="comments-toggle-count">(${comments.length})</span>
-        <span class="comments-toggle-arrow">▼</span>
-      `;
-
-      const section = document.createElement('div');
-      section.className = 'comments-section open';
-      comments.forEach(c => section.appendChild(buildCommentEl(c)));
-
-      toggle.addEventListener('click', () => {
-        const isOpen = section.classList.toggle('open');
-        toggle.classList.toggle('open', isOpen);
-      });
-
-      wrapper.appendChild(toggle);
-      wrapper.appendChild(section);
-      card.appendChild(wrapper);
-    }
-
   } catch (err) {
     loading.classList.add('hidden');
     console.error('Single post load error:', err);
