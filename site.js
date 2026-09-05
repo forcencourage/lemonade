@@ -711,6 +711,10 @@ const quill = new Quill('#quill-editor', {
   }
 });
 
+quill.root.setAttribute('spellcheck', 'true');
+quill.root.setAttribute('autocorrect', 'off');   // avoid mobile Safari auto-"correcting" words mid-typing
+quill.root.setAttribute('autocapitalize', 'off'); // optional, prevents odd auto-caps on mobile
+
 document.querySelector('.ql-toolbar .ql-mathproof')?.setAttribute('title', 'Import a theorem & proof (AI analysis)');
 document.querySelector('.ql-toolbar .ql-math')?.setAttribute('title', 'Insert equation (LaTeX)');
 
