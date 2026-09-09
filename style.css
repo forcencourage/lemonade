@@ -315,6 +315,11 @@ img {
 /* =============================================
    POSTS FEED
    ============================================= */
+
+.post-body .ql-align-center  { text-align: center; }
+.post-body .ql-align-right   { text-align: right; }
+.post-body .ql-align-justify { text-align: justify; }
+
 #posts-feed {
   display: flex;
   flex-direction: column;
