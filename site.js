@@ -1668,9 +1668,9 @@ function scheduleMathAnalysis(postId, imageUrl) {
         }
       );
       const data = await res.json();
-      if (!data.beauty || !data.analogy) throw new Error(data.error || 'Incomplete analysis');
+      if (!data.beauty) throw new Error(data.error || 'Incomplete analysis');
 
-      const analysis = { beauty: data.beauty, analogy: data.analogy };
+      const analysis = { beauty: data.beauty};
 
       const { error } = await db.from('posts').update({ math_analysis: analysis }).eq('id', postId);
       if (error) throw error;
@@ -1703,16 +1703,11 @@ function buildMathAnalysisSection(analysis, open = false) {
   section.className = open ? 'comments-section math-section open' : 'comments-section math-section';
 
   const beautyHtml  = escapeHtml(analysis.beauty  || '').replace(/\n+/g, '<br><br>');
-  const analogyHtml = escapeHtml(analysis.analogy || '').replace(/\n+/g, '<br><br>');
 
   section.innerHTML = `
     <div class="math-block">
       <div class="math-block-label"><span class="math-block-icon">∎</span>What makes this proof beautiful?</div>
       <div class="math-block-body">${beautyHtml}</div>
-    </div>
-    <div class="math-block">
-      <div class="math-block-label"><span class="math-block-icon">⇌</span>An analogy beyond mathematics</div>
-      <div class="math-block-body">${analogyHtml}</div>
     </div>
   `;
 
