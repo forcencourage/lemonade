@@ -190,6 +190,129 @@ document.getElementById('collection-dropdown-ephemera').addEventListener('click'
 });
 
 /* =============================================
+   HOME + TAGS  (collection dropdown)
+   ============================================= */
+document.getElementById('collection-dropdown-home').addEventListener('click', () => {
+  closeCollectionDropdown();
+  window.location.href = `${getSiteBase()}/`;
+});
+
+document.getElementById('collection-dropdown-tags').addEventListener('click', () => {
+  closeCollectionDropdown();
+  openTagsModal();
+});
+
+const tagsModal      = document.getElementById('tags-modal');
+const tagsModalClose = document.getElementById('tags-modal-close');
+const tagsCloud      = document.getElementById('tags-cloud');
+const tagsModalSub   = document.getElementById('tags-modal-sub');
+
+function closeTagsModal() {
+  tagsModal.classList.add('hidden');
+  document.body.style.overflow = '';
+}
+
+tagsModalClose.addEventListener('click', closeTagsModal);
+tagsModal.addEventListener('click', e => { if (e.target === tagsModal) closeTagsModal(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !tagsModal.classList.contains('hidden')) closeTagsModal();
+});
+
+// Fetch every row (Supabase caps a single response at 1000 rows)
+async function fetchTagRows(applyFilter) {
+  const rows = [];
+  const STEP = 1000;
+  for (let from = 0; ; from += STEP) {
+    const { data, error } = await applyFilter(
+      db.from('posts').select('tags').order('created_at', { ascending: false })
+    ).range(from, from + STEP - 1);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < STEP) break;
+  }
+  return rows;
+}
+
+// Returns [[tag, count], …] sorted by count desc, then alphabetically.
+// Same visibility rules as the feed: public posts + the signed-in user's own private posts.
+async function fetchTagCounts() {
+  const filters = [q => q.eq('is_private', false)];
+  if (isAdmin) filters.push(q => q.eq('is_private', true).eq('author', currentUsername));
+
+  const results = await Promise.all(filters.map(fetchTagRows));
+
+  const counts = new Map();
+  results.flat().forEach(row => {
+    (Array.isArray(row.tags) ? row.tags : []).forEach(tag => {
+      counts.set(tag, (counts.get(tag) || 0) + 1);
+    });
+  });
+
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+}
+
+function renderTagsModal(entries) {
+  tagsCloud.innerHTML = '';
+
+  if (!entries.length) {
+    tagsModalSub.textContent = '';
+    tagsCloud.innerHTML = '<p class="tags-empty">No tags yet.</p>';
+    return;
+  }
+
+  tagsModalSub.textContent = `${entries.length} tag${entries.length > 1 ? 's' : ''} used across the blog`;
+
+  entries.forEach(([tag, count]) => {
+    const item = document.createElement('div');
+    item.className = 'tags-item';
+
+    // Same element + class as the tags shown on posts
+    const btn = document.createElement('button');
+    btn.className = 'post-tag' + (tag === activeTagFilter ? ' active' : '');
+    btn.textContent = tag;
+    btn.title = `Show posts tagged “${tag}”`;
+    btn.addEventListener('click', () => filterByTagFromModal(tag));
+
+    const num = document.createElement('span');
+    num.className = 'tags-item-count';
+    num.textContent = count;
+    num.title = `${count} post${count > 1 ? 's' : ''}`;
+
+    item.append(btn, num);
+    tagsCloud.appendChild(item);
+  });
+}
+
+async function openTagsModal() {
+  tagsModal.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+  tagsModalSub.textContent = '';
+  tagsCloud.innerHTML = '<p class="tags-empty">Loading…</p>';
+
+  try {
+    renderTagsModal(await fetchTagCounts());
+  } catch (err) {
+    console.error('[Tags] load error:', err);
+    tagsCloud.innerHTML = '<p class="tags-empty">Could not load tags.</p>';
+  }
+}
+
+// Clicking a tag in the modal filters the feed (same behaviour as clicking it on a post)
+function filterByTagFromModal(tag) {
+  closeTagsModal();
+
+  // On a single-post page there is no feed, so go home with the filter in the URL
+  if (isSinglePostView) {
+    window.location.href = `${getSiteBase()}/?tag=${encodeURIComponent(tag)}`;
+    return;
+  }
+
+  activeTagFilter = activeTagFilter === tag ? null : tag;
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  applyFilters();
+}
+
+/* =============================================
    EPHEMERA
    ============================================= */
 let ephemeraNotes    = [];
@@ -4202,6 +4325,9 @@ for (const candidate of _candidates) {
     break;
   }
 }
+
+const _tagParam = new URLSearchParams(location.search).get('tag');
+if (_tagParam && !isSinglePostView) activeTagFilter = _tagParam;
 
 loadPersonalities();
 
