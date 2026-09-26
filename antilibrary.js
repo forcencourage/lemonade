@@ -10,7 +10,7 @@
 (function () {
 
   const GOOGLE_BOOKS_API = 'https://www.googleapis.com/books/v1/volumes';
-  const GOOGLE_BOOKS_API_KEY = 'AIzaSyAkSNhBy8KNIlq1RVvsAEArOKOoKmQSkt4';
+  const GOOGLE_BOOKS_API_KEY = 'AIzaSyCDL2FB_9yhWiutshbhxI8XHv2fYYNHdRA';
   const SEARCH_DEBOUNCE_MS = 450;
 
   /* ---------- DOM refs ---------- */
