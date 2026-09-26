@@ -141,13 +141,16 @@
       ? `<img src="${escapeHtml(book.cover_url)}" alt="${escapeHtml(book.title)}" loading="lazy">`
       : `<div class="antilibrary-cover-fallback">${escapeHtml((book.title || '?')[0])}</div>`;
 
+    const description = book.description || 'No description available.';
+
     card.innerHTML = `
       <div class="antilibrary-cover">${cover}</div>
       <div class="antilibrary-info">
         <div class="antilibrary-title">${escapeHtml(book.title)}</div>
         <div class="antilibrary-authors">${escapeHtml(authors)}${book.published_year ? ' · ' + escapeHtml(book.published_year) : ''}</div>
         ${book.language ? `<span class="antilibrary-lang">${escapeHtml(book.language.toUpperCase())}</span>` : ''}
-        <p class="antilibrary-blurb">${escapeHtml(book.description || 'No description available.')}</p>
+        <p class="antilibrary-blurb">${escapeHtml(description)}</p>
+        <button class="antilibrary-read-more">Read more</button>
       </div>
       <button class="antilibrary-remove" title="Remove from antilibrary">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -156,6 +159,21 @@
         </svg>
       </button>
     `;
+
+    const blurbEl    = card.querySelector('.antilibrary-blurb');
+    const readMoreBtn = card.querySelector('.antilibrary-read-more');
+
+    // Only show the toggle once we know the text actually overflows 3 lines
+    requestAnimationFrame(() => {
+      if (blurbEl.scrollHeight <= blurbEl.clientHeight + 1) {
+        readMoreBtn.remove();
+      }
+    });
+
+    readMoreBtn.addEventListener('click', () => {
+      const expanded = blurbEl.classList.toggle('expanded');
+      readMoreBtn.textContent = expanded ? 'Show less' : 'Read more';
+    });
 
     card.querySelector('.antilibrary-remove').addEventListener('click', () => removeBook(book.id, card));
     return card;

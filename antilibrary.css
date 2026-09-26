@@ -300,3 +300,37 @@
   background: #1a1a1a;
   color: #fff;
 }
+
+.antilibrary-blurb {
+  font-size: .78rem;
+  line-height: 1.5;
+  color: #666;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.antilibrary-blurb.expanded {
+  display: block;
+  -webkit-line-clamp: unset;
+  overflow: visible;
+}
+
+.antilibrary-read-more {
+  display: inline-block;
+  background: none;
+  border: none;
+  padding: 0;
+  margin-top: .3rem;
+  font-family: var(--font-sans);
+  font-size: .74rem;
+  font-weight: 600;
+  color: #1a1a1a;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  opacity: .7;
+  transition: opacity 140ms ease;
+}
+.antilibrary-read-more:hover { opacity: 1; }
