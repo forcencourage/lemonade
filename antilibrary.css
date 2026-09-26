@@ -268,3 +268,35 @@
   #antilibrary-header, #antilibrary-body { padding-left: 20px; padding-right: 20px; }
   #antilibrary-grid { grid-template-columns: 1fr; }
 }
+
+#antilibrary-close {
+  z-index: 5;
+}
+
+#antilibrary-close {
+  z-index: 5;
+}
+
+.antilibrary-filter-row {
+  display: flex;
+  gap: .5rem;
+  margin-top: .85rem;
+}
+
+.antilibrary-filter-chip {
+  background: #f0f0f0;
+  border: none;
+  border-radius: 999px;
+  padding: .3rem .9rem;
+  font-size: .78rem;
+  font-family: var(--font-sans);
+  font-weight: 500;
+  color: #777;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease;
+}
+.antilibrary-filter-chip:hover { background: #e6e6e6; color: #333; }
+.antilibrary-filter-chip.active {
+  background: #1a1a1a;
+  color: #fff;
+}

@@ -23,12 +23,14 @@
   const loadingEl       = document.getElementById('antilibrary-loading');
   const emptyEl         = document.getElementById('antilibrary-empty');
   const dropdownBtn     = document.getElementById('collection-dropdown-antilibrary');
+  const filterChips = modal.querySelectorAll('.antilibrary-filter-chip');
 
   // Markup not present on this page (e.g. old cached HTML) — bail quietly.
   if (!modal) return;
 
   let books        = [];
   let searchTimer   = null;
+  let activeLangFilter = 'all';
   let searchToken   = 0; // guards against out-of-order async responses
 
   /* =============================================
@@ -38,8 +40,23 @@
     modal.classList.remove('hidden');
     document.body.style.overflow = 'hidden';
     resetSearch();
+    resetLangFilter();
     loadBooks();
   }
+
+  function resetLangFilter() {
+    activeLangFilter = 'all';
+    filterChips.forEach(c => c.classList.toggle('active', c.dataset.lang === 'all'));
+  }
+
+  filterChips.forEach(chip => {
+    chip.addEventListener('click', () => {
+      filterChips.forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      activeLangFilter = chip.dataset.lang;
+      renderGrid();
+    });
+  });
 
   function closeAntilibraryModal() {
     modal.classList.add('hidden');
@@ -94,12 +111,21 @@
 
   function renderGrid() {
     gridEl.innerHTML = '';
-    if (!books.length) {
+
+    const filtered = activeLangFilter === 'all'
+      ? books
+      : books.filter(b => (b.language || '').toLowerCase().startsWith(activeLangFilter));
+
+    if (!filtered.length) {
+      emptyEl.textContent = books.length
+        ? `No ${activeLangFilter === 'en' ? 'English' : 'French'} books in your antilibrary yet.`
+        : 'Your antilibrary is empty. Search above to add a book.';
       emptyEl.classList.remove('hidden');
       return;
     }
+
     emptyEl.classList.add('hidden');
-    books.forEach(book => gridEl.appendChild(buildBookCard(book)));
+    filtered.forEach(book => gridEl.appendChild(buildBookCard(book)));
   }
 
   function buildBookCard(book) {
