@@ -10,7 +10,8 @@
 (function () {
 
   const GOOGLE_BOOKS_API = 'https://www.googleapis.com/books/v1/volumes';
-  const SEARCH_DEBOUNCE_MS = 320;
+  const GOOGLE_BOOKS_API_KEY = 'AIzaSyAkSNhBy8KNIlq1RVvsAEArOKOoKmQSkt4';
+  const SEARCH_DEBOUNCE_MS = 450;
 
   /* ---------- DOM refs ---------- */
   const modal          = document.getElementById('antilibrary-modal');
@@ -206,18 +207,41 @@
     }
   });
 
-  async function runSearch(query) {
+  let currentSearchController = null;
+
+  async function runSearch(query, attempt = 0) {
     const token = ++searchToken;
+
+    // Cancel any request still in flight so retyping doesn't pile up calls
+    currentSearchController?.abort();
+    currentSearchController = new AbortController();
+
     searchResultsEl.classList.remove('hidden');
-    searchResultsEl.innerHTML = `<div class="antilibrary-search-loading"><div class="spinner" style="width:22px;height:22px;margin:16px auto;"></div></div>`;
+    if (attempt === 0) {
+      searchResultsEl.innerHTML = `<div class="antilibrary-search-loading"><div class="spinner" style="width:22px;height:22px;margin:16px auto;"></div></div>`;
+    }
 
     try {
-      const url = `${GOOGLE_BOOKS_API}?q=${encodeURIComponent(query)}&maxResults=10&printType=books`;
-      const res  = await fetch(url);
-      const data = await res.json();
+      const keyParam = GOOGLE_BOOKS_API_KEY ? `&key=${GOOGLE_BOOKS_API_KEY}` : '';
+      const url = `${GOOGLE_BOOKS_API}?q=${encodeURIComponent(query)}&maxResults=10&printType=books${keyParam}`;
+      const res = await fetch(url, { signal: currentSearchController.signal });
 
-      if (token !== searchToken) return; // a newer search superseded this one
+      if (token !== searchToken) return; // superseded by a newer search
 
+      if (res.status === 429) {
+        if (attempt < 2) {
+          // Back off and retry once or twice before giving up
+          await new Promise(r => setTimeout(r, 800 * (attempt + 1)));
+          if (token !== searchToken) return;
+          return runSearch(query, attempt + 1);
+        }
+        searchResultsEl.innerHTML = `<p class="antilibrary-search-empty">Search is rate-limited right now — wait a moment and try again.</p>`;
+        return;
+      }
+
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+      const data  = await res.json();
       const items = (data.items || []).filter(it => it.volumeInfo?.title);
 
       if (!items.length) {
@@ -229,6 +253,7 @@
       items.forEach(item => searchResultsEl.appendChild(buildResultRow(item)));
 
     } catch (err) {
+      if (err.name === 'AbortError') return; // expected when a newer search cancels this one
       if (token !== searchToken) return;
       console.error('[Antilibrary] search error:', err);
       searchResultsEl.innerHTML = `<p class="antilibrary-search-empty">Search failed. Try again.</p>`;
