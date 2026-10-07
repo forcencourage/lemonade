@@ -250,7 +250,11 @@
   /* =============================================
      PUZZLE MODEL
      ============================================= */
-  function setupPuzzle(placements, answers = {}, revealed = []) {
+  /**
+   * @param given  null  → brand-new puzzle: pick one random starter letter per word
+   *               array → restore saved starter letters ("r,c" keys)
+   */
+  function setupPuzzle(placements, answers = {}, revealed = [], given = null) {
     const entries = placements.map((p, i) => {
       const parsed = parseWord(p.word);
       return {
@@ -278,7 +282,7 @@
         let cell = grid[r][c];
         if (!cell) {
           cell = grid[r][c] = {
-            r, c, letter: ch, value: '', revealed: false, num: 0,
+            r, c, letter: ch, value: '', revealed: false, given: false, num: 0,
             entries: { across: null, down: null },
             el: null, valEl: null
           };
@@ -314,6 +318,24 @@
       if (cell && cell.value) cell.revealed = true;
     });
 
+    // Starter letters
+    if (given === null) {
+      entries.forEach(e => {
+        const letters = e.cells.filter(Boolean);
+        const fresh = letters.filter(c => !c.given);   // avoid wasting a hint on a crossing
+        const pool = fresh.length ? fresh : letters;
+        const c = pool[Math.floor(Math.random() * pool.length)];
+        c.given = true;
+        c.value = c.letter;
+      });
+    } else {
+      given.forEach(k => {
+        const [r, c] = k.split(',').map(Number);
+        const cell = grid[r]?.[c];
+        if (cell) { cell.given = true; cell.value = cell.letter; }
+      });
+    }
+
     // Positions of the black boxes separating sub-words of an expression
     const gaps = new Set();
     entries.forEach(e => {
@@ -328,7 +350,7 @@
     puzzle = { rows, cols, grid, entries, placements, gaps, complete: false };
 
     const first = entries.slice().sort((a, b) => a.num - b.num || (a.dir === ACROSS ? -1 : 1))[0];
-    const start = first.cells.find(c => c && !c.value) || first.cells[0];
+    const start = first.cells.find(c => c && !c.value) || first.cells.find(Boolean);
     active = { r: start.r, c: start.c, dir: first.dir };
     lastScrolledEntry = null;
 
@@ -340,6 +362,7 @@
   }
 
   const EYE_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>';
+  const LETTER_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20 12 4l8 16"/><path d="M7.5 14h9"/></svg>';
 
   const curCell = () => puzzle.grid[active.r][active.c];
 
@@ -456,6 +479,7 @@
       cell.el.classList.toggle('cw-in-word', !!ae && ae.cells.includes(cell));
       cell.el.classList.toggle('cw-active', cell === ac);
       cell.el.classList.toggle('cw-revealed', !!cell.revealed);
+      cell.el.classList.toggle('cw-given', !!cell.given);
       if (cell.valEl.textContent !== cell.value) cell.valEl.textContent = cell.value;
     }));
 
@@ -496,7 +520,9 @@
         <span class="cw-ac-tag">${ae.num} ${ae.dir === ACROSS ? 'Across' : 'Down'}</span>
         <span>${esc(ae.definition || 'No definition')}</span>
         <span class="cw-ac-enum">${esc(ae.enumStr)}</span>
-        ${ae.solved ? '' : `<button type="button" class="cw-reveal-word" title="Reveal this word">${EYE_ICON}<span>Reveal word</span></button>`}`;
+        ${ae.solved ? '' : `
+          <button type="button" class="cw-reveal-letter" title="Reveal next letter">${LETTER_ICON}<span>Reveal letter</span></button>
+          <button type="button" class="cw-reveal-word" title="Reveal this word">${EYE_ICON}<span>Reveal word</span></button>`}`;
     }
   }
 
@@ -535,31 +561,69 @@
     focusInput();
   }
 
-  function stepInEntry(step) {
+  /** Next/previous letter cell in the active word. `skipGiven` jumps over starter letters. */
+  function stepInEntry(step, skipGiven = false) {
     const e = activeEntry();
     let i = e.cells.indexOf(curCell()) + step;
-    while (i >= 0 && i < e.cells.length && !e.cells[i]) i += step;
+    while (i >= 0 && i < e.cells.length && (!e.cells[i] || (skipGiven && e.cells[i].given))) i += step;
     return i >= 0 && i < e.cells.length ? e.cells[i] : null;
   }
 
+  function clueOrder() {
+    return [
+      ...puzzle.entries.filter(e => e.dir === ACROSS).sort((a, b) => a.num - b.num),
+      ...puzzle.entries.filter(e => e.dir === DOWN).sort((a, b) => a.num - b.num)
+    ];
+  }
+
+  /** Moves focus to the next unsolved clue after `e` (wraps around). */
+  function goToNextUnsolved(e) {
+    const order = clueOrder();
+    const i = order.indexOf(e);
+    const next = order.slice(i + 1).concat(order.slice(0, i)).find(x => !x.solved);
+    if (next) selectEntry(next);
+    else focusInput();
+  }
+
   function typeChar(ch) {
-    const cur = curCell();
+    const entry = activeEntry();
+    const wasSolved = entry.solved;
+    let cur = curCell();
+
+    // Cursor sits on a starter letter: write into the next free cell instead
+    if (cur.given) {
+      const free = stepInEntry(1, true);
+      if (!free) return;
+      active.r = free.r;
+      active.c = free.c;
+      cur = free;
+    }
+
     cur.value = ch;
     cur.revealed = false;
-    const next = stepInEntry(1);
+
+    const next = stepInEntry(1, true);
     if (next) { active.r = next.r; active.c = next.c; }
+
     refresh(true);
     save();
+
+    // Word just completed correctly → jump to the next unsolved clue
+    if (!wasSolved && entry.solved && !puzzle.complete) goToNextUnsolved(entry);
   }
 
   function backspace() {
     const cell = curCell();
-    if (cell.value) {
+    if (cell.value && !cell.given) {
       cell.value = '';
       cell.revealed = false;
     } else {
       const prev = stepInEntry(-1);
-      if (prev) { active.r = prev.r; active.c = prev.c; prev.value = ''; prev.revealed = false; }
+      if (prev) {
+        active.r = prev.r;
+        active.c = prev.c;
+        if (!prev.given) { prev.value = ''; prev.revealed = false; }
+      }
     }
     refresh(true);
     save();
@@ -584,18 +648,8 @@
     }
   }
 
-  function clueOrder() {
-    return [
-      ...puzzle.entries.filter(e => e.dir === ACROSS).sort((a, b) => a.num - b.num),
-      ...puzzle.entries.filter(e => e.dir === DOWN).sort((a, b) => a.num - b.num)
-    ];
-  }
-
   function jumpClue(step) {
-    const order = [
-      ...puzzle.entries.filter(e => e.dir === ACROSS).sort((a, b) => a.num - b.num),
-      ...puzzle.entries.filter(e => e.dir === DOWN).sort((a, b) => a.num - b.num)
-    ];
+    const order = clueOrder();
     const i = order.indexOf(activeEntry());
     selectEntry(order[(i + step + order.length) % order.length]);
   }
@@ -616,8 +670,7 @@
       case 'Backspace':  backspace(); break;
       case 'Delete': {
         const dc = curCell();
-        dc.value = '';
-        dc.revealed = false;
+        if (!dc.given) { dc.value = ''; dc.revealed = false; }
         refresh(true);
         save();
         break;
@@ -660,13 +713,16 @@
     if (!puzzle) return;
     const answers = {};
     const revealed = [];
+    const given = [];
     puzzle.grid.forEach(row => row.forEach(cell => {
       if (!cell || !cell.value) return;
-      answers[cell.r + ',' + cell.c] = cell.value;
-      if (cell.revealed) revealed.push(cell.r + ',' + cell.c);
+      const k = cell.r + ',' + cell.c;
+      answers[k] = cell.value;
+      if (cell.revealed) revealed.push(k);
+      if (cell.given) given.push(k);
     }));
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ placements: puzzle.placements, answers, revealed }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ placements: puzzle.placements, answers, revealed, given }));
     } catch { /* storage unavailable */ }
   }
 
@@ -691,8 +747,9 @@
   }
   function hideMessage() { messageEl.classList.add('cw-hidden'); }
 
+  // Starter letters don't count as progress
   function hasProgress() {
-    return !!puzzle && puzzle.grid.some(row => row.some(c => c && c.value));
+    return !!puzzle && puzzle.grid.some(row => row.some(c => c && c.value && !c.given));
   }
 
   async function fetchVocabulary() {
@@ -721,7 +778,7 @@
         showMessage('Couldn’t build a grid. Add a few more words to your vocabulary (at least 3, sharing some letters) and try again.');
         return;
       }
-      setupPuzzle(placements, {});
+      setupPuzzle(placements, {}, [], null);
       save();
       focusInput();
     } catch (err) {
@@ -734,6 +791,26 @@
     }
   }
 
+  /** Reveals the next missing letter of a word, one per click. */
+  function revealLetter(e) {
+    if (!puzzle || busy || !e || e.solved) return;
+    const target = e.cells.find(c => c && c.value !== c.letter);
+    if (!target) return;
+
+    target.value = target.letter;
+    target.revealed = true;
+
+    // Keep the cursor inside this word, on the next missing letter
+    const nextMissing = e.cells.find(c => c && c.value !== c.letter);
+    const cursor = nextMissing || target;
+    active = { r: cursor.r, c: cursor.c, dir: e.dir };
+
+    refresh(true);
+    save();
+    if (e.solved && !puzzle.complete) goToNextUnsolved(e);
+    else focusInput();
+  }
+
   /** Reveals a single word, then moves on to the next unsolved clue. */
   function revealEntry(e) {
     if (!puzzle || busy || !e || e.solved) return;
@@ -741,12 +818,7 @@
       if (c && c.value !== c.letter) { c.value = c.letter; c.revealed = true; }
     });
     refresh(true);   // recomputes solved state + plays the yellow pop
-
-    const order = clueOrder();
-    const i = order.indexOf(e);
-    const next = order.slice(i + 1).concat(order.slice(0, i)).find(x => !x.solved);
-    if (next) selectEntry(next);
-    else focusInput();
+    goToNextUnsolved(e);
     save();
   }
 
@@ -798,7 +870,9 @@
     });
 
     activeClueEl.addEventListener('click', e => {
-      if (e.target.closest('.cw-reveal-word') && puzzle) revealEntry(activeEntry());
+      if (!puzzle) return;
+      if (e.target.closest('.cw-reveal-letter')) revealLetter(activeEntry());
+      else if (e.target.closest('.cw-reveal-word')) revealEntry(activeEntry());
     });
 
     inputEl.addEventListener('input', onInput);
@@ -819,7 +893,8 @@
     const saved = loadSaved();
     if (saved) {
       try {
-        setupPuzzle(saved.placements, saved.answers || {}, saved.revealed || []);
+        // Old saves without `given` load as "no starter letters"
+        setupPuzzle(saved.placements, saved.answers || {}, saved.revealed || [], saved.given || []);
         focusInput();
         return;
       } catch (err) {

@@ -149,7 +149,10 @@
   color: var(--cw-muted);
   font-variant-numeric: tabular-nums;
 }
-.cw-reveal-word {
+
+/* Reveal letter / Reveal word pills (shared style) */
+.cw-reveal-word,
+.cw-reveal-letter {
   flex: none;
   align-self: center;
   display: inline-flex;
@@ -167,7 +170,8 @@
   cursor: pointer;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
-.cw-reveal-word:hover { background: var(--cw-yellow); border-color: var(--cw-yellow-strong); }
+.cw-reveal-word:hover,
+.cw-reveal-letter:hover { background: var(--cw-yellow); border-color: var(--cw-yellow-strong); }
 
 .cw-active-clue.cw-done {
   background: var(--cw-yellow);
@@ -376,6 +380,10 @@
   font-weight: 500;
 }
 
+/* Pre-filled starter letters */
+.cw-cell.cw-given .cw-letter { color: #2f5fd0; }
+.cw-cell.cw-given { cursor: default; }
+
 .cw-clue-reveal {
   flex: none;
   align-self: center;
@@ -456,6 +464,7 @@
     position: sticky;
     top: 0;
     z-index: 3;
+    flex-wrap: wrap;   /* room for the two reveal buttons */
   }
 }
 
