@@ -460,20 +460,23 @@ async function loadPersonalities() {
   try {
     const { data, error } = await db
       .from('personas')
-      .select('id, name, color, description')
+      .select('id, name, color, description, is_active')
       .order('sort_order', { ascending: true });
     if (error) throw error;
 
-    // `persona` keeps the field name the ai-comment edge function already expects
-    personalities = (data || []).map(p => ({
+    const all = (data || []).map(p => ({
       id: p.id,
       name: p.name,
       color: p.color,
-      persona: p.description
+      persona: p.description,   // field name the ai-comment edge function expects
+      active: p.is_active !== false
     }));
 
-    // fast lookup map: name → full persona object
-    personalityMap = Object.fromEntries(personalities.map(p => [p.name, p]));
+    // Every persona (even disabled) stays clickable on existing comments
+    personalityMap = Object.fromEntries(all.map(p => [p.name, p]));
+
+    // Only active personas are sent to the AI for new posts
+    personalities = all.filter(p => p.active);
 
   } catch (err) {
     console.error('Could not load personalities:', err);

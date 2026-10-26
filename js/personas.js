@@ -28,6 +28,8 @@ const pmPreviewName  = document.getElementById('pm-preview-name');
 const pmSaveBtn      = document.getElementById('pm-save-btn');
 const pmDeleteBtn    = document.getElementById('pm-delete-btn');
 const pmStatusEl     = document.getElementById('pm-status');
+const pmActiveInput  = document.getElementById('pm-active-input');
+const pmActiveLabel  = document.getElementById('pm-active-label');
 
 /* ── Helpers ─────────────────────────────── */
 function pmSetStatus(text, isError = false) {
@@ -50,8 +52,7 @@ function pmNormalizeColor(c) {
 }
 
 function pmSetFormEnabled(on) {
-  [pmNameInput, pmColorInput, pmHexInput, pmDescInput].forEach(el => el.disabled = !on);
-  pmSwatchesEl.classList.toggle('pm-swatches--disabled', !on);
+  [pmNameInput, pmColorInput, pmHexInput, pmDescInput, pmActiveInput].forEach(el => el.disabled = !on);  pmSwatchesEl.classList.toggle('pm-swatches--disabled', !on);
   pmSaveBtn.disabled   = !on;
   pmDeleteBtn.disabled = !on || pmIsNew;
 }
@@ -61,6 +62,12 @@ function pmUpdatePreview() {
   pmPreview.style.setProperty('--comment-color', color);
   pmPreviewName.textContent = pmNameInput.value.trim() || 'Persona';
   pmPreviewName.style.color = color;
+}
+
+function pmSyncActiveUI() {
+  const on = pmActiveInput.checked;
+  pmActiveLabel.textContent = on ? 'Comments on new posts' : 'Disabled — won’t comment on new posts';
+  pmPreview.classList.toggle('pm-preview--off', !on);
 }
 
 function pmSetColor(hex, { markDirty = false } = {}) {
@@ -113,7 +120,7 @@ async function pmLoadRows(selectId = null) {
 
   const { data, error } = await db
     .from('personas')
-    .select('id, name, color, description')
+    .select('id, name, color, description, is_active')
     .order('sort_order', { ascending: true });
 
   if (error) {
@@ -133,15 +140,18 @@ async function pmLoadRows(selectId = null) {
 function pmRenderList() {
   pmListEl.innerHTML = '';
 
-  pmRows.forEach(row => {
+    pmRows.forEach(row => {
+    const off = row.is_active === false;
     const li = document.createElement('li');
-    li.className = 'pm-item' + (!pmIsNew && row.id === pmActiveId ? ' active' : '');
-    li.innerHTML = `<span class="pm-dot"></span><span class="pm-item-name"></span>`;
+    li.className = 'pm-item'
+        + (!pmIsNew && row.id === pmActiveId ? ' active' : '')
+        + (off ? ' pm-item--off' : '');
+    li.innerHTML = `<span class="pm-dot"></span><span class="pm-item-name"></span>${off ? '<span class="pm-off-badge">Off</span>' : ''}`;
     li.querySelector('.pm-dot').style.background = pmNormalizeColor(row.color);
     li.querySelector('.pm-item-name').textContent = row.name;
     li.addEventListener('click', () => pmSelect(row.id));
     pmListEl.appendChild(li);
-  });
+    });
 
   if (pmIsNew) {
     const li = document.createElement('li');
@@ -164,6 +174,8 @@ function pmSelect(id, force = false) {
   pmSetFormEnabled(true);
   pmNameInput.value = row.name;
   pmDescInput.value = row.description;
+  pmActiveInput.checked = row.is_active !== false;
+  pmSyncActiveUI();
   pmSetColor(pmNormalizeColor(row.color));
   pmSetStatus('');
   pmRenderList();
@@ -204,6 +216,8 @@ pmHexInput.addEventListener('blur', () => { pmHexInput.value = pmColorInput.valu
 
 pmNewBtn.addEventListener('click', () => pmStartNew());
 
+pmActiveInput.addEventListener('change', () => { pmSyncActiveUI(); pmMarkDirty(); });
+
 /* ── Save ────────────────────────────────── */
 function pmFail(message, field) {
   pmSetStatus(message, true);
@@ -214,6 +228,8 @@ async function pmSave() {
   const name        = pmNameInput.value.trim();
   const description = pmDescInput.value.trim();
   const color       = PM_HEX_RE.test(pmColorInput.value) ? pmColorInput.value.toLowerCase() : null;
+
+  const is_active = pmActiveInput.checked;
 
   if (!name)        return pmFail('Give the persona a name.', pmNameInput);
   if (!description) return pmFail('Add a description.', pmDescInput);
@@ -230,7 +246,7 @@ async function pmSave() {
 
     if (pmIsNew) {
       const { data, error } = await db.from('personas')
-        .insert([{ name, color, description }])
+        .insert([{ name, color, description, is_active }])
         .select('id').single();
       if (error) throw error;
       savedId = data.id;
@@ -238,7 +254,7 @@ async function pmSave() {
       const previous = pmRows.find(r => r.id === pmActiveId);
 
       const { error } = await db.from('personas')
-        .update({ name, color, description })
+        .update({ name, color, description, is_active })
         .eq('id', pmActiveId);
       if (error) throw error;
 

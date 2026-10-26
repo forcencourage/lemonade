@@ -223,6 +223,29 @@
 #pm-delete-btn:hover:not(:disabled) { border-color: #cc3333; color: #cc3333; }
 #pm-delete-btn:disabled { opacity: .4; cursor: default; }
 
+/* ── Disabled personas ── */
+.pm-active-toggle { margin-right: 0; }
+.pm-active-toggle .toggle-label { font-size: .85rem; }
+
+.pm-item--off .pm-item-name,
+.pm-item--off .pm-dot { opacity: .45; }
+
+.pm-off-badge {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: #999;
+  border: 1px solid #ddd;
+  border-radius: 999px;
+  padding: 1px 7px;
+  flex-shrink: 0;
+}
+
+#pm-preview { transition: opacity 180ms ease; }
+#pm-preview.pm-preview--off { opacity: .4; }
+
 @media (max-width: 720px) {
   #pm-box { width: calc(100vw - 24px); height: calc(100vh - 24px); }
   #pm-body { flex-direction: column; }
