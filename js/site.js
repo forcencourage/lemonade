@@ -458,19 +458,31 @@ let mathProofImageUrl = null;
    ============================================= */
 async function loadPersonalities() {
   try {
-    personalities = window.personalities || [];
+    const { data, error } = await db
+      .from('personas')
+      .select('id, name, color, description')
+      .order('sort_order', { ascending: true });
+    if (error) throw error;
 
-    // build fast lookup map: name → full persona object
-    personalityMap = Object.fromEntries(
-      personalities.map(p => [p.name, p])
-    );
+    // `persona` keeps the field name the ai-comment edge function already expects
+    personalities = (data || []).map(p => ({
+      id: p.id,
+      name: p.name,
+      color: p.color,
+      persona: p.description
+    }));
+
+    // fast lookup map: name → full persona object
+    personalityMap = Object.fromEntries(personalities.map(p => [p.name, p]));
 
   } catch (err) {
     console.error('Could not load personalities:', err);
     personalities = [];
     personalityMap = {};
   }
+  return personalities;
 }
+
 /* =============================================
    DOM REFS
    ============================================= */
@@ -2802,54 +2814,27 @@ async function notifySubscribers(postTitle, postContent) {
   }
 }
 
-
 const modal = document.getElementById("persona-modal");
 const personaTitle = document.getElementById("persona-title");
 const personaText = document.getElementById("persona-text");
 const personaClose = document.getElementById("persona-close");
-const translateBtn = document.getElementById("translate-btn");
-const translationArea = document.getElementById("translation-area");
-const personaTranslation = document.getElementById("persona-translation");
 
 document.addEventListener("click", (e) => {
   const el = e.target.closest(".persona-name");
   if (!el) return;
 
-  const name = el.dataset.persona;
-  const persona = personalityMap[name];
+  const persona = personalityMap[el.dataset.persona];
   if (!persona) return;
 
   personaTitle.textContent = persona.name;
   personaTitle.style.color = persona.color || '#000';
   personaText.textContent = persona.persona;
 
-  // Store translation on the button, reset state
-  translateBtn.dataset.translation = persona.translation || '';
-  translateBtn.dataset.translated = 'false';
-  translateBtn.textContent = 'Voir en français';
-  translateBtn.classList.toggle('hidden', !persona.translation);
-
   modal.classList.remove("hidden");
-});
-
-translateBtn.addEventListener("click", () => {
-  const isShowingTranslation = translateBtn.dataset.translated === 'true';
-
-  if (isShowingTranslation) {
-    personaText.textContent = translateBtn.dataset.original;
-    translateBtn.textContent = 'Voir en français';
-    translateBtn.dataset.translated = 'false';
-  } else {
-    translateBtn.dataset.original = personaText.textContent;
-    personaText.textContent = translateBtn.dataset.translation;
-    translateBtn.textContent = 'View in english';
-    translateBtn.dataset.translated = 'true';
-  }
 });
 
 personaClose.addEventListener("click", () => modal.classList.add("hidden"));
 modal.addEventListener("click", (e) => { if (e.target === modal) modal.classList.add("hidden"); });
-
 
 /* =============================================
    WRITING PROPOSALS

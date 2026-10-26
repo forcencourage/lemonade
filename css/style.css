@@ -910,68 +910,8 @@ input[type="search"]::-webkit-search-cancel-button {
   text-align: justify;
 }
 
-
-.persona-box button {
-  float: right;
-}
-
 .hidden {
   display: none;
-}
-
-.translate-btn {
-  margin-top: 1.5rem;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11.5px;
-  font-weight: 500;
-  letter-spacing: 0.03em;
-  padding: 7px 16px;
-  border-radius: 999px;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  background: transparent;
-  color: #888;
-  cursor: pointer;
-  transition: background 200ms ease, border-color 200ms ease,
-    color 200ms ease, transform 100ms ease;
-}
-
-.translate-btn:hover {
-  background: rgba(0, 0, 0, 0.04);
-  border-color: rgba(0, 0, 0, 0.18);
-  color: #333;
-}
-
-.translate-btn:active {
-  transform: scale(0.97);
-}
-
-#translation-area {
-  margin-top: 1.25rem;
-  padding: 1.1rem 1.25rem;
-  border-radius: 14px;
-  background: #fafafa;
-  border: 1px solid rgba(0, 0, 0, 0.06);
-}
-
-.translation-label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #ccc;
-  margin: 0 0 0.6rem;
-  display: block;
-}
-
-#persona-translation {
-  margin: 0;
-  font-size: 0.93rem;
-  line-height: 1.85;
-  color: #555;
-  font-weight: 400;
-  text-align: left;
 }
 
 .post-meta {
