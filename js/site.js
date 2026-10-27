@@ -1569,23 +1569,13 @@ function scheduleAIComments(postId, postHtml) {
       }));
 
       const { data: insertedComments, error } = await db.from('comments').insert(rows).select();
-
-      // Then map ids back onto the comments array before rendering:
-      if (insertedComments) {
-        insertedComments.forEach((row, i) => { if (comments[i]) comments[i].id = row.id; });
-      }
-
       if (error) throw error;
 
       hideCommentsStatus(postId);
 
-      for (const c of comments) {
-        appendCommentToCard(postId, {
-          persona_name: c.name,
-          persona_color: personalities.find(p => p.name === c.name)?.color || '#000',
-          content: c.comment,
-          created_at: new Date().toISOString()
-        });
+      // Use the rows returned by the DB so each comment has its real id
+      for (let i = 0; i < rows.length; i++) {
+        appendCommentToCard(postId, insertedComments?.[i] ?? rows[i]);
         await new Promise(r => setTimeout(r, 300));
       }
 
@@ -1810,46 +1800,53 @@ function formatSummaryAsHtml(summaryText) {
 }
 
 
-function showCommentsStatus(postId, state) {
+// postId -> state ('loading' | 'transcript' | 'math-loading')
+const pendingStatus = new Map();
+
+function removeStatusEl(postId) {
+  document.querySelectorAll(`[data-status-for="${postId}"]`).forEach(el => el.remove());
+}
+
+function renderStatusEl(postId, state) {
   const card = document.querySelector(`#posts-feed [data-id="${postId}"]`);
   if (!card) return;
 
-  hideCommentsStatus(postId);
+  removeStatusEl(postId);
 
   const el = document.createElement('div');
   el.className = `comments-status comments-status--${state}`;
   el.dataset.statusFor = postId;
 
   if (state === 'loading') {
-    el.innerHTML = `
-      <span class="comments-status-spinner"></span>
-      <span>AI agents generating comments…</span>
-    `;
+    el.innerHTML = `<span class="comments-status-spinner"></span><span>AI agents generating comments…</span>`;
   } else if (state === 'transcript') {
-    el.innerHTML = `
-      <span class="comments-status-spinner"></span>
-      <span>Generating video transcript…</span>
-    `;
+    el.innerHTML = `<span class="comments-status-spinner"></span><span>Generating video transcript…</span>`;
   } else if (state === 'error') {
-    el.innerHTML = `
-      <span class="comments-status-icon">✕</span>
-      <span>Error while generating comments</span>
-    `;
+    el.innerHTML = `<span class="comments-status-icon">✕</span><span>Error while generating comments</span>`;
   } else if (state === 'math-loading') {
-    el.innerHTML = `
-      <span class="comments-status-spinner"></span>
-      <span>Analyzing the proof's structure…</span>
-    `;
+    el.innerHTML = `<span class="comments-status-spinner"></span><span>Analyzing the proof's structure…</span>`;
   }
 
   card.appendChild(el);
 }
 
-
+function showCommentsStatus(postId, state) {
+  const key = String(postId);
+  // Remember in-progress states so they survive a feed re-render
+  if (state === 'error') pendingStatus.delete(key);
+  else pendingStatus.set(key, state);
+  renderStatusEl(postId, state);
+}
 
 function hideCommentsStatus(postId) {
-  document.querySelectorAll(`[data-status-for="${postId}"]`)
-    .forEach(el => el.remove());
+  pendingStatus.delete(String(postId));
+  removeStatusEl(postId);
+}
+
+// Call this right after a card is appended to the feed
+function restorePendingStatus(postId) {
+  const state = pendingStatus.get(String(postId));
+  if (state) renderStatusEl(postId, state);
 }
 
 /* =============================================
@@ -2063,18 +2060,13 @@ function showRegenerateButton(postId, postHtml) {
         created_at: new Date().toISOString()
       }));
 
-      const { error: insError } = await db.from('comments').insert(rows);
+      const { data: insertedComments, error: insError } = await db.from('comments').insert(rows).select();
       if (insError) throw insError;
 
       hideCommentsStatus(postId);
 
-      for (const c of comments) {
-        appendCommentToCard(postId, {
-          persona_name: c.name,
-          persona_color: personalities.find(p => p.name === c.name)?.color || '#000',
-          content: c.comment,
-          created_at: new Date().toISOString()
-        });
+      for (let i = 0; i < rows.length; i++) {
+        appendCommentToCard(postId, insertedComments?.[i] ?? rows[i]);
         await new Promise(r => setTimeout(r, 300));
       }
 
@@ -2108,6 +2100,8 @@ function appendCommentToCard(postId, comment) {
     console.warn(`[AI] Card ${postId} not found in DOM, comment won't appear without refresh`);
     return;
   }
+  
+  if (comment.id && card.querySelector(`.ai-comment[data-comment-id="${comment.id}"]`)) return;
 
   let section = card.querySelector('.comments-section');
   let toggle = card.querySelector('.comments-toggle');
@@ -2371,12 +2365,17 @@ async function loadNextPage(isInitial = false, expectedVersion = null) {
       const card = buildPostCard(post);
       const commentsSection = post.is_math_proof ? null : await buildCommentsSection(post.id);
       if (commentsSection) card.appendChild(commentsSection);
-      postsFeed.appendChild(card);          
-      if (post.summary) appendSummaryToCard(post.id, post.summary); 
+      postsFeed.appendChild(card);
+      if (post.summary) appendSummaryToCard(post.id, post.summary);
       if (post.is_math_proof && post.math_analysis) appendMathAnalysisToCard(post.id, post.math_analysis, false);
       appendNoteToCard(card, post, isAdmin && currentUsername === post.author, false);
       applyPostTruncation(card);
-      if (!commentsSection && !post.no_ai && !post.is_math_proof && isAdmin && currentUsername === post.author) {
+
+      restorePendingStatus(post.id);
+
+      if (!commentsSection && !post.no_ai && !post.is_math_proof
+          && !pendingStatus.has(String(post.id))          
+          && isAdmin && currentUsername === post.author) {
         showRegenerateButton(post.id, post.content || '');
       }
     }
@@ -2409,7 +2408,8 @@ async function reRenderCurrentPosts() {
     postsFeed.appendChild(card); 
     appendNoteToCard(card, post, isAdmin && currentUsername === post.author, false);
     applyPostTruncation(card);
-    if (!commentsSection && !post.no_ai && !post.is_math_proof && isAdmin && currentUsername === post.author) {
+    restorePendingStatus(post.id);
+    if (!commentsSection && !post.no_ai && !post.is_math_proof && !pendingStatus.has(String(post.id)) && isAdmin && currentUsername === post.author) {
       showRegenerateButton(post.id, post.content || '');
     }
   }
