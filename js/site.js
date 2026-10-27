@@ -138,7 +138,7 @@ function attachSaveButton(commentEl, commentId) {
     saveComment_collection(commentId, btn);
   });
 
-  commentEl.appendChild(btn);
+  ensureActionsRow(commentEl).appendChild(btn);
 }
 
 // ── Collection button → dropdown (if logged in + has saves) or direct nav ──
@@ -2181,9 +2181,10 @@ function buildCommentEl(comment) {
     <div class="ai-comment-body">${escapeHtml(comment.content)}</div>
   `;
 
-  // Save button — only when user is signed in
+  // Save + Negate buttons — only when user is signed in
   if (isAdmin && comment.id) {
     attachSaveButton(el, comment.id);
+    if (!comment.parent_comment_id) attachNegateButton(el, comment);
   }
 
   return el;
@@ -2200,14 +2201,13 @@ async function buildCommentsSection(postId) {
   toggle.className = 'comments-toggle';
   toggle.innerHTML = `
     <span class="comments-toggle-label">Programs comments</span>
-    <span class="comments-toggle-count">(${comments.length})</span>
+    <span class="comments-toggle-count">(${comments.filter(c => !c.parent_comment_id).length})</span>
     <span class="comments-toggle-arrow">▼</span>
   `;
 
-  // Section
   const section = document.createElement('div');
   section.className = 'comments-section';
-  comments.forEach(c => section.appendChild(buildCommentEl(c)));
+  renderCommentsInto(section, comments);
 
   toggle.addEventListener('click', () => {
     const isOpen = section.classList.toggle('open');
@@ -2217,6 +2217,227 @@ async function buildCommentsSection(postId) {
   wrapper.appendChild(toggle);
   wrapper.appendChild(section);
   return wrapper;
+}
+
+/* =============================================
+   NEGATION
+   ============================================= */
+const NEGATION_COLOR = '#000000';
+
+function ensureActionsRow(commentEl) {
+  let row = commentEl.querySelector(':scope > .comment-actions');
+  if (!row) {
+    row = document.createElement('div');
+    row.className = 'comment-actions';
+    commentEl.appendChild(row);
+  }
+  return row;
+}
+
+// ── Negate button ───────────────────────────
+function setNegateBtnState(btn, state) {
+  btn.classList.toggle('busy', state === 'busy');
+  btn.classList.toggle('is-open', state === 'shown');
+  const labels = {
+    idle:   '<span class="negate-glyph">≠</span> Negate',
+    busy:   '<span class="comments-status-spinner" style="width:10px;height:10px;border-width:1.5px;"></span> Negating…',
+    shown:  '<span class="negate-glyph">≠</span> Hide negation',
+    hidden: '<span class="negate-glyph">≠</span> Show negation'
+  };
+  btn.innerHTML = labels[state];
+}
+
+function attachNegateButton(commentEl, comment) {
+  if (!comment?.id || commentEl.querySelector('.btn-negate-comment')) return;
+
+  const btn = document.createElement('button');
+  btn.className = 'btn-negate-comment';
+  btn.dataset.commentId = comment.id;
+  btn.title = 'Generate a counter-argument to this comment';
+  setNegateBtnState(btn, 'idle');
+
+  btn.addEventListener('click', () => onNegateClick(commentEl, comment, btn));
+  ensureActionsRow(commentEl).appendChild(btn);
+}
+
+function onNegateClick(commentEl, comment, btn) {
+  if (btn.classList.contains('busy')) return;
+
+  // A negation already exists → toggle it open/closed
+  const existing = commentEl.closest('.comment-thread')?.querySelector(':scope > .negation-wrap');
+  if (existing && existing.querySelector('.negation-comment:not(.negation-pending)')) {
+    const open = existing.classList.toggle('open');
+    setNegateBtnState(btn, open ? 'shown' : 'hidden');
+    return;
+  }
+
+  runNegation(commentEl, comment, btn);
+}
+
+// ── Thread / bridge structure ───────────────
+function buildBridge() {
+  const b = document.createElement('div');
+  b.className = 'negation-bridge';
+  b.setAttribute('aria-hidden', 'true');
+  b.innerHTML = `<span class="negation-bridge-badge" title="Contradicts the comment above">≠</span>`;
+  return b;
+}
+
+// Wraps the original comment in a .comment-thread (once) and adds a collapsible
+// wrap holding: bridge + negation card.
+function ensureNegationWrap(commentEl) {
+  let thread = commentEl.closest('.comment-thread');
+  if (!thread) {
+    thread = document.createElement('div');
+    thread.className = 'comment-thread';
+    thread.style.setProperty(
+      '--comment-color',
+      commentEl.style.getPropertyValue('--comment-color') || '#888'
+    );
+    commentEl.replaceWith(thread);
+    thread.appendChild(commentEl);
+  }
+
+  let wrap = thread.querySelector(':scope > .negation-wrap');
+  if (!wrap) {
+    wrap = document.createElement('div');
+    wrap.className = 'negation-wrap';
+    const inner = document.createElement('div');
+    inner.className = 'negation-inner';
+    inner.appendChild(buildBridge());
+    wrap.appendChild(inner);
+    thread.appendChild(wrap);
+  }
+  return { thread, wrap, inner: wrap.firstElementChild };
+}
+
+function buildNegationEl(n) {
+  const el = document.createElement('div');
+  el.className = 'ai-comment negation-comment';
+  el.dataset.commentId = n.id || '';
+  el.style.setProperty('--comment-color', NEGATION_COLOR);
+
+  const dateStr = new Date(n.created_at || Date.now()).toLocaleDateString('en-US', {
+    year: 'numeric', month: 'long', day: 'numeric'
+  });
+
+  el.innerHTML = `
+    <div class="ai-comment-header">
+      <span class="ai-comment-name" style="color:#000000;">NEGATION</span>
+      <span class="ai-comment-date">${dateStr}</span>
+    </div>
+    <div class="ai-comment-body">${escapeHtml(n.content)}</div>
+  `;
+
+  if (isAdmin && n.id) attachSaveButton(el, n.id);
+  return el;
+}
+
+function buildNegationPlaceholder() {
+  const el = document.createElement('div');
+  el.className = 'ai-comment negation-comment negation-pending';
+  el.style.setProperty('--comment-color', NEGATION_COLOR);
+  el.innerHTML = `
+    <div class="ai-comment-header">
+      <span class="ai-comment-name" style="color:#000000;">NEGATION</span>
+    </div>
+    <div class="negation-pending-body">
+      <span class="comments-status-spinner"></span>
+      <span>Building the counter-argument…</span>
+    </div>
+  `;
+  return el;
+}
+
+// Used when loading saved comments from the DB (no generation)
+function attachNegation(commentEl, negation) {
+  const { wrap, inner } = ensureNegationWrap(commentEl);
+  inner.appendChild(buildNegationEl(negation));
+  wrap.classList.add('open');
+  const btn = commentEl.querySelector('.btn-negate-comment');
+  if (btn) setNegateBtnState(btn, 'shown');
+}
+
+// Render a flat list of comments, nesting negations under their parent
+function renderCommentsInto(section, comments) {
+  const roots     = comments.filter(c => !c.parent_comment_id);
+  const negations = comments.filter(c => c.parent_comment_id);
+
+  roots.forEach(c => {
+    const el = buildCommentEl(c);
+    section.appendChild(el);
+    const n = negations.find(x => String(x.parent_comment_id) === String(c.id));
+    if (n) attachNegation(el, n);
+  });
+}
+
+// ── Generation ──────────────────────────────
+function getPostHtmlForCard(card, postId) {
+  const post = loadedPosts.find(p => String(p.id) === String(postId));
+  return post?.content || card.querySelector('.post-body')?.innerHTML || '';
+}
+
+async function runNegation(commentEl, comment, btn) {
+  const card = commentEl.closest('article[data-id]');
+  if (!card) return;
+  const postId = card.dataset.id;
+
+  setNegateBtnState(btn, 'busy');
+
+  const { wrap, inner } = ensureNegationWrap(commentEl);
+  const placeholder = buildNegationPlaceholder();
+  inner.appendChild(placeholder);
+
+  // double rAF so the open transition actually plays
+  requestAnimationFrame(() => requestAnimationFrame(() => wrap.classList.add('open')));
+  setTimeout(() => placeholder.scrollIntoView({ behavior: 'smooth', block: 'nearest' }), 150);
+
+  try {
+    const postHtml  = getPostHtmlForCard(card, postId);
+    const postText  = stripHtml(postHtml);
+    const imageUrls = extractImagesFromHtml(postHtml);
+
+    const persona = {
+      name: 'NEGATION',
+      color: NEGATION_COLOR,
+      persona:
+`You are NEGATION, a rigorous contrarian. You are given a comment written by "${comment.persona_name}" about the post. Your only job is to contradict the central theory or claim of that comment.
+
+Steps: (1) silently identify the comment's core thesis; (2) argue the opposite as convincingly as you can, with concrete reasoning, a counter-example or a hidden flaw in its premise. Do not insult, do not simply say "no", do not merely hedge.
+
+Rules: write in the same language as the original comment; roughly the same length as the original (2 to 5 sentences); no preamble; never mention being an AI or a "negation".
+
+ORIGINAL COMMENT:
+"""
+${comment.content}
+"""`
+    };
+
+    const result = await generateAICommentsBatch(postText, [persona], imageUrls);
+    const text = (result?.[0]?.comment || '').trim();
+    if (!text) throw new Error('Empty negation');
+
+    const { data, error } = await db.from('comments').insert([{
+      post_id: postId,
+      persona_name: 'NEGATION',
+      persona_color: NEGATION_COLOR,
+      content: text,
+      parent_comment_id: comment.id,
+      created_at: new Date().toISOString()
+    }]).select().single();
+    if (error) throw error;
+
+    const el = buildNegationEl(data);
+    el.classList.add('negation-reveal');
+    placeholder.replaceWith(el);
+    setNegateBtnState(btn, 'shown');
+
+  } catch (err) {
+    console.error('[Negate] failed:', err);
+    wrap.remove();
+    setNegateBtnState(btn, 'idle');
+    saveToast('Could not generate the negation.');
+  }
 }
 
 /* =============================================
@@ -3243,12 +3464,12 @@ async function renderSinglePost(postId) {
         toggle.className = 'comments-toggle open';
         toggle.innerHTML = `
           <span class="comments-toggle-label">Programs comments</span>
-          <span class="comments-toggle-count">(${comments.length})</span>
+          <span class="comments-toggle-count">(${comments.filter(c => !c.parent_comment_id).length})</span>
           <span class="comments-toggle-arrow">▼</span>
         `;
         const section = document.createElement('div');
         section.className = 'comments-section open';
-        comments.forEach(c => section.appendChild(buildCommentEl(c)));
+        renderCommentsInto(section, comments);
         toggle.addEventListener('click', () => {
           const isOpen = section.classList.toggle('open');
           toggle.classList.toggle('open', isOpen);
