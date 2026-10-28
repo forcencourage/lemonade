@@ -19,8 +19,9 @@
   --radius-lg: 14px;
   --nav-h:     56px;
   --max-w:     680px;
-  --font-serif: 'DM Serif Display', Georgia, serif;
-  --font-sans:  'DM Sans', system-ui, sans-serif;
+  --font-text: 'Crimson Pro', Georgia, serif;
+  --font-serif: 'Crimson Pro', Georgia, serif;
+  --font-sans:  'Crimson Pro', Georgia, serif;
   --transition: 180ms ease;
 }
 
