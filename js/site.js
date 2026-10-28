@@ -4376,3 +4376,245 @@ db.auth.getSession().then(() => {
 
   syncVocabPanelVisibility();
 });
+
+/* =============================================
+   EXPLAIN SELECTION
+   Select text inside a comment / negation → floating "Explain" button → modal
+   ============================================= */
+const EXPLAIN_URL = `${SUPABASE_URL}/functions/v1/explain-text`;
+const EXPLAIN_LABELS = {
+  en: { plain: 'In plain words', ctx: 'In this comment', from: 'From', retry: 'Try again',
+        error: 'Could not generate an explanation.' },
+  fr: { plain: 'En clair', ctx: 'Dans ce commentaire', from: 'De', retry: 'Réessayer',
+        error: "Impossible de générer l'explication." }
+};
+
+const explainCache = new Map();
+let explainSel      = null;   // { text, body } of the last valid selection
+let explainPressing = false;  // true while the button is being pressed
+let explainReq      = 0;      // guards against stale responses
+let explainTimer;
+
+const ICON_SPARK = `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2c.6 4.6 2.4 7.4 8 8-5.6.6-7.4 3.4-8 8-.6-4.6-2.4-7.4-8-8 5.6-.6 7.4-3.4 8-8z"/></svg>`;
+
+// ── Floating button ─────────────────────────
+const explainFab = document.createElement('button');
+explainFab.id   = 'explain-fab';
+explainFab.type = 'button';
+explainFab.className = 'hidden';
+explainFab.setAttribute('aria-label', 'Explain selected text');
+explainFab.innerHTML = `${ICON_SPARK}<span>Explain</span>`;
+document.body.appendChild(explainFab);
+
+// ── Modal ───────────────────────────────────
+const explainModal = document.createElement('div');
+explainModal.id = 'explain-modal';
+explainModal.className = 'modal-overlay hidden';
+explainModal.innerHTML = `
+  <div class="modal-box explain-box" role="dialog" aria-modal="true" aria-label="Explanation">
+    <button id="explain-close" class="share-modal-close" title="Close">✕</button>
+    <div class="explain-eyebrow">${ICON_SPARK}<span>Explain</span></div>
+    <blockquote id="explain-quote" class="explain-quote"></blockquote>
+    <div id="explain-from" class="explain-from"></div>
+    <div id="explain-body" class="explain-body"></div>
+  </div>
+`;
+document.body.appendChild(explainModal);
+
+const explainQuote = document.getElementById('explain-quote');
+const explainFrom  = document.getElementById('explain-from');
+const explainBody  = document.getElementById('explain-body');
+
+// ── Selection detection ─────────────────────
+const isTouchDevice = () => window.matchMedia('(pointer: coarse)').matches;
+
+function getExplainSelection() {
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
+
+  const text = sel.toString().replace(/\s+/g, ' ').trim();
+  if (text.length < 2 || text.length > 400) return null;
+
+  const toEl = n => (n && n.nodeType === Node.TEXT_NODE ? n.parentElement : n);
+  const bodyA = toEl(sel.anchorNode)?.closest?.('#posts-feed .ai-comment-body');
+  const bodyF = toEl(sel.focusNode)?.closest?.('#posts-feed .ai-comment-body');
+  if (!bodyA || bodyA !== bodyF) return null;   // must stay inside ONE comment
+
+  return { text, body: bodyA, range: sel.getRangeAt(0) };
+}
+
+function hideExplainFab() {
+  explainFab.classList.add('hidden');
+}
+
+function updateExplainFab() {
+  if (explainPressing) return;
+  if (!explainModal.classList.contains('hidden')) { hideExplainFab(); return; }
+
+  const s = getExplainSelection();
+  if (!s) { hideExplainFab(); return; }
+
+  explainSel = { text: s.text, body: s.body };
+
+  explainFab.classList.remove('hidden');
+  const rect = s.range.getBoundingClientRect();
+  const w = explainFab.offsetWidth;
+  const h = explainFab.offsetHeight;
+
+  // Touch devices show the native menu above the selection → go below
+  let top = isTouchDevice() ? rect.bottom + 12 : rect.top - h - 10;
+  if (top < 64) top = rect.bottom + 10;                          // keep clear of the navbar
+  if (top + h > window.innerHeight - 8) top = window.innerHeight - h - 8;
+
+  let left = rect.left + rect.width / 2 - w / 2;
+  left = Math.max(8, Math.min(left, window.innerWidth - w - 8));
+
+  explainFab.style.top  = `${top}px`;
+  explainFab.style.left = `${left}px`;
+}
+
+document.addEventListener('selectionchange', () => {
+  clearTimeout(explainTimer);
+  explainTimer = setTimeout(updateExplainFab, 140);
+});
+window.addEventListener('scroll', () => {
+  if (!explainFab.classList.contains('hidden')) updateExplainFab();
+}, { passive: true });
+window.addEventListener('resize', updateExplainFab);
+
+// Keep the selection alive while the button is pressed
+explainFab.addEventListener('mousedown',   e => e.preventDefault());
+explainFab.addEventListener('pointerdown', e => { e.preventDefault(); explainPressing = true; });
+['pointerup', 'pointercancel'].forEach(ev =>
+  document.addEventListener(ev, () => setTimeout(() => { explainPressing = false; }, 60))
+);
+explainFab.addEventListener('click', openExplain);
+
+// ── Context for the AI ──────────────────────
+function buildExplainContext(sel) {
+  const commentEl  = sel.body.closest('.ai-comment');
+  const isNegation = commentEl.classList.contains('negation-comment');
+  const commentText = sel.body.textContent.trim();
+
+  const parentText = isNegation
+    ? commentEl.closest('.comment-thread')
+        ?.querySelector(':scope > .ai-comment .ai-comment-body')?.textContent.trim() || ''
+    : '';
+
+  const card = commentEl.closest('article[data-id]');
+  const postText = card ? stripHtml(getPostHtmlForCard(card, card.dataset.id)).trim() : '';
+
+  return {
+    selectedText: sel.text,
+    commentText,
+    parentCommentText: parentText,
+    postText: postText.slice(0, 4000),
+    language: detectLanguage(commentText + ' ' + sel.text),
+    persona: commentEl.querySelector('.ai-comment-name')?.textContent.trim() || '',
+    color: commentEl.style.getPropertyValue('--comment-color') || '#000000'
+  };
+}
+
+// ── Modal rendering ─────────────────────────
+function renderExplainLoading() {
+  explainBody.innerHTML = `
+    <div class="explain-skeleton" aria-busy="true">
+      <span></span><span></span><span class="short"></span>
+    </div>`;
+}
+
+function renderExplainResult(data, lang) {
+  const L = EXPLAIN_LABELS[lang] || EXPLAIN_LABELS.en;
+  explainBody.innerHTML = `
+    <section class="explain-section">
+      <h4>${L.plain}</h4>
+      <p>${escapeHtml(data.meaning)}</p>
+    </section>
+    ${data.in_context ? `
+    <section class="explain-section">
+      <h4>${L.ctx}</h4>
+      <p>${escapeHtml(data.in_context)}</p>
+    </section>` : ''}`;
+}
+
+function renderExplainError(ctx) {
+  const L = EXPLAIN_LABELS[ctx.language] || EXPLAIN_LABELS.en;
+  explainBody.innerHTML = `
+    <p class="explain-error">${L.error}</p>
+    <button class="btn-ghost btn-sm explain-retry" type="button">${L.retry}</button>`;
+  explainBody.querySelector('.explain-retry').addEventListener('click', () => runExplain(ctx));
+}
+
+function closeExplain() {
+  explainModal.classList.add('hidden');
+  explainReq++;   // invalidate any in-flight request
+}
+
+// ── Open + fetch ────────────────────────────
+function openExplain() {
+  if (!explainSel) return;
+  const ctx = buildExplainContext(explainSel);
+
+  hideExplainFab();
+  window.getSelection()?.removeAllRanges();
+
+  const L = EXPLAIN_LABELS[ctx.language] || EXPLAIN_LABELS.en;
+  explainQuote.textContent = ctx.selectedText;
+  explainQuote.style.setProperty('--explain-accent', ctx.color);
+  explainFrom.textContent = ctx.persona ? `${L.from} ${ctx.persona}` : '';
+  explainFrom.style.display = ctx.persona ? '' : 'none';
+
+  explainModal.classList.remove('hidden');
+  runExplain(ctx);
+}
+
+async function runExplain(ctx) {
+  const key = `${ctx.commentText}||${ctx.selectedText}`;
+  const cached = explainCache.get(key);
+  if (cached) { renderExplainResult(cached, ctx.language); return; }
+
+  const myReq = ++explainReq;
+  renderExplainLoading();
+
+  const ac = new AbortController();
+  const abortTimer = setTimeout(() => ac.abort(), 45000);
+  try {
+    const res = await fetch(EXPLAIN_URL, {
+      method: 'POST',
+      signal: ac.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`
+      },
+      body: JSON.stringify({
+        selectedText:      ctx.selectedText,
+        commentText:       ctx.commentText,
+        parentCommentText: ctx.parentCommentText,
+        postText:          ctx.postText,
+        language:          ctx.language
+      })
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const data = await res.json();
+    if (!data.meaning) throw new Error(data.error || 'Empty explanation');
+
+    explainCache.set(key, data);
+    if (myReq !== explainReq) return;   // modal was closed or another request started
+    renderExplainResult(data, ctx.language);
+
+  } catch (err) {
+    console.error('[Explain] failed:', err);
+    if (myReq !== explainReq) return;
+    renderExplainError(ctx);
+  } finally {
+    clearTimeout(abortTimer);
+  }
+}
+
+// ── Close behaviour ─────────────────────────
+document.getElementById('explain-close').addEventListener('click', closeExplain);
+explainModal.addEventListener('click', e => { if (e.target === explainModal) closeExplain(); });
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !explainModal.classList.contains('hidden')) closeExplain();
+});
