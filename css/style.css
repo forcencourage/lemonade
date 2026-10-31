@@ -28,7 +28,10 @@
 /* =============================================
    BASE
    ============================================= */
-html { scroll-behavior: smooth; }
+html { 
+  scroll-behavior: smooth;
+  font-size: 125%; 
+}
 
 body {
   background: var(--bg);
