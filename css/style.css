@@ -2985,9 +2985,9 @@ div.ql-pullquote::before {
 
 .ql-pullquote .pq-text {
   font-family: var(--font-sans);
-  font-size: 1.3rem;
+  font-size: 1rem;
   font-weight: 300;
-  line-height: 1.6;
+  line-height: 1.8;
   color: var(--text);
   white-space: pre-line;
   overflow-wrap: break-word;
@@ -3079,7 +3079,7 @@ div.ql-pullquote::before {
   overflow-y: auto;
 }
 div.quote-preview::before { font-size: 5.2rem; width: 2.4rem; height: 2.3rem; }
-.quote-preview .pq-text { font-size: 1.05rem; }
+.quote-preview .pq-text { font-size: 1rem; }
 .quote-preview .pq-placeholder { color: var(--text-muted); font-style: italic; }
 
 /* Toolbar icon */
@@ -3089,5 +3089,5 @@ div.quote-preview::before { font-size: 5.2rem; width: 2.4rem; height: 2.3rem; }
 @media (max-width: 600px) {
   div.ql-pullquote { gap: .9rem; }
   div.ql-pullquote::before { width: 2.2rem; height: 2.1rem; font-size: 4.8rem; }
-  .ql-pullquote .pq-text { font-size: 1.15rem; }
+  .ql-pullquote .pq-text { font-size: 1rem; }
 }
