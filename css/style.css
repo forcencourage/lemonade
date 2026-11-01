@@ -2942,3 +2942,12 @@ input[type="search"]::-webkit-search-cancel-button {
 @media (max-width: 600px) {
   .explain-box { padding: 1.5rem 1.25rem 1.3rem; }
 }
+
+/* Keep modals at their original size (cancels the 125% root scale) */
+.modal-overlay,
+.persona-modal,
+.cw-overlay,
+#lightbox,
+#proposals-panel {
+  zoom: 0.8;
+}
