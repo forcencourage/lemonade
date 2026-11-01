@@ -2951,3 +2951,143 @@ input[type="search"]::-webkit-search-cancel-button {
 #proposals-panel {
   zoom: 0.8;
 }
+
+/* =============================================
+   PULL QUOTE
+   ============================================= */
+div.ql-pullquote {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.4rem;
+  margin: 1.75rem 0;
+  text-align: left;
+  cursor: default;
+}
+
+/* Big black quote mark */
+div.ql-pullquote::before {
+  content: '\201C';
+  flex-shrink: 0;
+  width: 3.4rem;
+  font-family: Georgia, 'Times New Roman', serif;
+  font-weight: 700;
+  font-size: 7.5rem;
+  line-height: .78;
+  height: 3.2rem;
+  color: #000;
+  user-select: none;
+}
+
+.ql-pullquote .pq-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.ql-pullquote .pq-text {
+  font-family: var(--font-sans);
+  font-size: 1.3rem;
+  font-weight: 300;
+  line-height: 1.6;
+  color: var(--text);
+  white-space: pre-line;
+  overflow-wrap: break-word;
+}
+
+.ql-pullquote .pq-author {
+  margin-top: .7rem;
+  font-size: .78rem;
+  font-weight: 600;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.ql-pullquote .pq-author::before {
+  content: '— ';
+  letter-spacing: 0;
+}
+
+/* Editor: subtle hover/selected feedback */
+.ql-editor .ql-pullquote { border-radius: 8px; padding: .25rem .4rem; margin-left: -.4rem; }
+.ql-editor .ql-pullquote:hover { background: #f6f6f6; }
+
+/* Modal */
+.quote-modal-box {
+  position: relative;
+  width: min(480px, 92vw);
+  padding: 1.75rem 1.75rem 1.5rem;
+  border-radius: 16px;
+  animation: shareModalIn 200ms cubic-bezier(.34,1.56,.64,1);
+}
+#quote-modal { z-index: 250; }
+
+.quote-field { display: block; margin-bottom: 1rem; }
+.quote-label {
+  display: block;
+  margin-bottom: .35rem;
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: #999;
+}
+.quote-label em {
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: .02em;
+  text-transform: none;
+  margin-left: .35rem;
+  color: #bbb;
+}
+
+.quote-field textarea,
+.quote-field input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  padding: .6rem .85rem;
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  line-height: 1.5;
+  color: var(--text);
+  background: var(--surface);
+  outline: none;
+  resize: vertical;
+  transition: box-shadow var(--transition), border-color var(--transition);
+}
+.quote-field textarea:focus,
+.quote-field input:focus {
+  box-shadow: 0 0 0 2px #1a1a1a22;
+  border-color: var(--text);
+}
+
+.quote-preview-label {
+  margin: 1.1rem 0 .4rem;
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: #999;
+}
+.quote-preview {
+  margin: 0 0 1.25rem;
+  padding: 1rem 1rem 1rem .9rem;
+  border: 1px dashed var(--border2);
+  border-radius: var(--radius);
+  background: #fbfbfa;
+  max-height: 200px;
+  overflow-y: auto;
+}
+div.quote-preview::before { font-size: 5.2rem; width: 2.4rem; height: 2.3rem; }
+.quote-preview .pq-text { font-size: 1.05rem; }
+.quote-preview .pq-placeholder { color: var(--text-muted); font-style: italic; }
+
+/* Toolbar icon */
+.ql-toolbar .ql-pullquote:hover { color: #06c; }
+
+
+@media (max-width: 600px) {
+  div.ql-pullquote { gap: .9rem; }
+  div.ql-pullquote::before { width: 2.2rem; height: 2.1rem; font-size: 4.8rem; }
+  .ql-pullquote .pq-text { font-size: 1.15rem; }
+}

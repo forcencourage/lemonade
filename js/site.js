@@ -628,6 +628,151 @@ InlineMathBlot.className = 'ql-imath';
 Quill.register(InlineMathBlot);
 
 /* =============================================
+   PULL QUOTE BLOT  (quote + author)
+   ============================================= */
+icons['pullquote'] = `
+  <svg viewBox="0 0 18 18">
+    <path fill="currentColor" d="M3 12.2c0-3 1.2-5.2 3.6-6.4l.7 1c-1.4.8-2.1 1.8-2.2 3 .2-.1.5-.2.8-.2 1 0 1.8.8 1.8 1.8S6.9 13 5.8 13C4.2 13 3 12.7 3 12.2zm7 0c0-3 1.2-5.2 3.6-6.4l.7 1c-1.4.8-2.1 1.8-2.2 3 .2-.1.5-.2.8-.2 1 0 1.8.8 1.8 1.8S13.9 13 12.8 13c-1.600 0-2.800-.3-2.800-.8z"/>
+  </svg>
+`;
+
+class PullQuoteBlot extends BlockEmbed {
+  static create(value) {
+    const node = super.create();
+    const quote  = (value && value.quote)  || '';
+    const author = (value && value.author) || '';
+
+    node.dataset.quote  = quote;
+    node.dataset.author = author;
+    node.contentEditable = 'false';
+
+    const content = document.createElement('div');
+    content.className = 'pq-content';
+
+    const text = document.createElement('div');
+    text.className = 'pq-text';
+    text.textContent = quote;
+    content.appendChild(text);
+
+    if (author) {
+      const cite = document.createElement('div');
+      cite.className = 'pq-author';
+      cite.textContent = author;
+      content.appendChild(cite);
+    }
+
+    node.appendChild(content);
+    return node;
+  }
+  static value(node) {
+    return { quote: node.dataset.quote || '', author: node.dataset.author || '' };
+  }
+}
+PullQuoteBlot.blotName  = 'pullquote';
+PullQuoteBlot.tagName   = 'div';
+PullQuoteBlot.className = 'ql-pullquote';
+Quill.register(PullQuoteBlot);
+
+/* ── Pull quote modal ── */
+const quoteModal = document.createElement('div');
+quoteModal.id = 'quote-modal';
+quoteModal.className = 'modal-overlay hidden';
+quoteModal.innerHTML = `
+  <div class="modal-box quote-modal-box" role="dialog" aria-modal="true" aria-label="Insert quote">
+    <button id="quote-close" class="share-modal-close" title="Close">✕</button>
+    <h3>Insert quote</h3>
+
+    <label class="quote-field">
+      <span class="quote-label">Quote</span>
+      <textarea id="quote-text-input" rows="4" placeholder="Type or paste the quote…"></textarea>
+    </label>
+
+    <label class="quote-field">
+      <span class="quote-label">Author <em>optional</em></span>
+      <input id="quote-author-input" type="text" maxlength="120" placeholder="e.g. Hermann Hesse" autocomplete="off">
+    </label>
+
+    <div class="quote-preview-label">Preview</div>
+    <div id="quote-preview" class="ql-pullquote quote-preview"></div>
+
+    <div class="modal-actions">
+      <button id="quote-cancel" class="btn-ghost">Cancel</button>
+      <button id="quote-confirm" class="btn-primary" disabled>Insert</button>
+    </div>
+  </div>
+`;
+document.body.appendChild(quoteModal);
+
+const quoteTextInput   = document.getElementById('quote-text-input');
+const quoteAuthorInput = document.getElementById('quote-author-input');
+const quotePreview     = document.getElementById('quote-preview');
+const quoteConfirmBtn  = document.getElementById('quote-confirm');
+let quoteInsertRange = null;
+
+function renderQuotePreview() {
+  const quote  = quoteTextInput.value.trim();
+  const author = quoteAuthorInput.value.trim();
+  quoteConfirmBtn.disabled = !quote;
+
+  quotePreview.innerHTML = '';
+  const content = document.createElement('div');
+  content.className = 'pq-content';
+
+  const text = document.createElement('div');
+  text.className = 'pq-text pq-placeholder';
+  text.textContent = quote || 'Your quote will appear here…';
+  if (quote) text.classList.remove('pq-placeholder');
+  content.appendChild(text);
+
+  if (author) {
+    const cite = document.createElement('div');
+    cite.className = 'pq-author';
+    cite.textContent = author;
+    content.appendChild(cite);
+  }
+  quotePreview.appendChild(content);
+}
+
+function openQuoteModal() {
+  quoteInsertRange = quill.getSelection(true);   // remember the cursor position
+  quoteTextInput.value = '';
+  quoteAuthorInput.value = '';
+  renderQuotePreview();
+  quoteModal.classList.remove('hidden');
+  setTimeout(() => quoteTextInput.focus(), 50);
+}
+
+function closeQuoteModal() {
+  quoteModal.classList.add('hidden');
+  quoteInsertRange = null;
+}
+
+function confirmQuote() {
+  const quote  = quoteTextInput.value.trim();
+  const author = quoteAuthorInput.value.trim();
+  if (!quote) { quoteTextInput.focus(); return; }
+
+  const range = quoteInsertRange || quill.getSelection(true);
+  quill.insertEmbed(range.index, 'pullquote', { quote, author }, 'user');
+  quill.setSelection(range.index + 1, 0, 'user');
+  closeQuoteModal();
+}
+
+quoteTextInput.addEventListener('input', renderQuotePreview);
+quoteAuthorInput.addEventListener('input', renderQuotePreview);
+quoteConfirmBtn.addEventListener('click', confirmQuote);
+document.getElementById('quote-cancel').addEventListener('click', closeQuoteModal);
+document.getElementById('quote-close').addEventListener('click', closeQuoteModal);
+quoteModal.addEventListener('click', e => { if (e.target === quoteModal) closeQuoteModal(); });
+quoteModal.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeQuoteModal();
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) confirmQuote();
+  if (e.key === 'Enter' && e.target === quoteAuthorInput) { e.preventDefault(); confirmQuote(); }
+});
+
+function quoteHandler() { openQuoteModal(); }
+
+/* =============================================
    QUILL SETUP
    ============================================= */
 const quill = new Quill('#quill-editor', {
@@ -645,7 +790,7 @@ const quill = new Quill('#quill-editor', {
         [{ align: [] }],
         ['blockquote', 'code-block'],
         [{ list: 'ordered' }, { list: 'bullet' }],
-        ['link', 'image', 'video', 'tweet', 'mathproof', 'math'],
+        ['link', 'image', 'video', 'tweet', 'mathproof', 'math', 'pullquote'],
         ['table'],
         ['clean']
       ],
@@ -655,6 +800,7 @@ const quill = new Quill('#quill-editor', {
         tweet: tweetHandler,
         math: mathHandler,
         mathproof: mathProofHandler,
+        pullquote: quoteHandler,
         table: function() {
           quill.getModule('table').insertTable(1, 2);
         }
@@ -669,6 +815,8 @@ quill.root.setAttribute('autocapitalize', 'off'); // optional, prevents odd auto
 
 document.querySelector('.ql-toolbar .ql-mathproof')?.setAttribute('title', 'Import a theorem & proof (AI analysis)');
 document.querySelector('.ql-toolbar .ql-math')?.setAttribute('title', 'Insert equation (LaTeX)');
+
+document.querySelector('.ql-toolbar .ql-pullquote')?.setAttribute('title', 'Insert a quote');
 
 function mathHandler() {
   openMathModal();
@@ -1375,6 +1523,12 @@ function stripHtml(html) {
       const placeholder = document.createTextNode(`[Equation: ${latex}]`);
       node.replaceWith(placeholder);
     }
+  });
+
+  div.querySelectorAll('.ql-pullquote').forEach(node => {
+    const q = node.dataset.quote || '';
+    const a = node.dataset.author ? ` — ${node.dataset.author}` : '';
+    node.replaceWith(document.createTextNode(`[Quote: "${q}"${a}]\n`));
   });
 
   return div.textContent || div.innerText || '';
