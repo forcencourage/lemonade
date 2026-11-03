@@ -78,10 +78,6 @@
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
           Calendar
         </button>
-        <button class="collection-dropdown-item" id="collection-dropdown-tags">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".6" fill="currentColor"/></svg>
-          Tags
-        </button>
       </div>
     </div>
     <div class="nav-right">
@@ -357,13 +353,13 @@
     </div>
   </div>
 
-  <!-- TAGS MODAL -->
-  <div id="tags-modal" class="modal-overlay hidden">
-    <div class="modal-box tags-modal-box">
-      <button id="tags-modal-close" class="share-modal-close" title="Close">✕</button>
-      <h3>Tags</h3>
-      <p class="tags-modal-sub" id="tags-modal-sub"></p>
-      <div id="tags-cloud" class="tags-cloud"></div>
+  <div id="tag-area">
+    <div id="tag-list"></div>
+    <div id="tag-input-wrap">
+      <input id="tag-input" type="text" placeholder="Add a tag, press Enter…"
+            autocomplete="off" role="combobox" aria-expanded="false"
+            aria-controls="tag-suggest" aria-autocomplete="list">
+      <ul id="tag-suggest" class="tag-suggest hidden" role="listbox" aria-label="Tag suggestions"></ul>
     </div>
   </div>
 

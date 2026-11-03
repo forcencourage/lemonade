@@ -190,32 +190,11 @@ document.getElementById('collection-dropdown-ephemera').addEventListener('click'
 });
 
 /* =============================================
-   HOME + TAGS  (collection dropdown)
+   HOME  (collection dropdown)
    ============================================= */
 document.getElementById('collection-dropdown-home').addEventListener('click', () => {
   closeCollectionDropdown();
   window.location.href = `${getSiteBase()}/`;
-});
-
-document.getElementById('collection-dropdown-tags').addEventListener('click', () => {
-  closeCollectionDropdown();
-  openTagsModal();
-});
-
-const tagsModal      = document.getElementById('tags-modal');
-const tagsModalClose = document.getElementById('tags-modal-close');
-const tagsCloud      = document.getElementById('tags-cloud');
-const tagsModalSub   = document.getElementById('tags-modal-sub');
-
-function closeTagsModal() {
-  tagsModal.classList.add('hidden');
-  document.body.style.overflow = '';
-}
-
-tagsModalClose.addEventListener('click', closeTagsModal);
-tagsModal.addEventListener('click', e => { if (e.target === tagsModal) closeTagsModal(); });
-document.addEventListener('keydown', e => {
-  if (e.key === 'Escape' && !tagsModal.classList.contains('hidden')) closeTagsModal();
 });
 
 // Fetch every row (Supabase caps a single response at 1000 rows)
@@ -249,67 +228,6 @@ async function fetchTagCounts() {
   });
 
   return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-}
-
-function renderTagsModal(entries) {
-  tagsCloud.innerHTML = '';
-
-  if (!entries.length) {
-    tagsModalSub.textContent = '';
-    tagsCloud.innerHTML = '<p class="tags-empty">No tags yet.</p>';
-    return;
-  }
-
-  tagsModalSub.textContent = `${entries.length} tag${entries.length > 1 ? 's' : ''} used across the blog`;
-
-  entries.forEach(([tag, count]) => {
-    const item = document.createElement('div');
-    item.className = 'tags-item';
-
-    // Same element + class as the tags shown on posts
-    const btn = document.createElement('button');
-    btn.className = 'post-tag' + (tag === activeTagFilter ? ' active' : '');
-    btn.textContent = tag;
-    btn.title = `Show posts tagged “${tag}”`;
-    btn.addEventListener('click', () => filterByTagFromModal(tag));
-
-    const num = document.createElement('span');
-    num.className = 'tags-item-count';
-    num.textContent = count;
-    num.title = `${count} post${count > 1 ? 's' : ''}`;
-
-    item.append(btn, num);
-    tagsCloud.appendChild(item);
-  });
-}
-
-async function openTagsModal() {
-  tagsModal.classList.remove('hidden');
-  document.body.style.overflow = 'hidden';
-  tagsModalSub.textContent = '';
-  tagsCloud.innerHTML = '<p class="tags-empty">Loading…</p>';
-
-  try {
-    renderTagsModal(await fetchTagCounts());
-  } catch (err) {
-    console.error('[Tags] load error:', err);
-    tagsCloud.innerHTML = '<p class="tags-empty">Could not load tags.</p>';
-  }
-}
-
-// Clicking a tag in the modal filters the feed (same behaviour as clicking it on a post)
-function filterByTagFromModal(tag) {
-  closeTagsModal();
-
-  // On a single-post page there is no feed, so go home with the filter in the URL
-  if (isSinglePostView) {
-    window.location.href = `${getSiteBase()}/?tag=${encodeURIComponent(tag)}`;
-    return;
-  }
-
-  activeTagFilter = activeTagFilter === tag ? null : tag;
-  window.scrollTo({ top: 0, behavior: 'smooth' });
-  applyFilters();
 }
 
 /* =============================================
@@ -1279,16 +1197,207 @@ db.auth.onAuthStateChange((_event, session) => {
 });
 
 /* =============================================
-   TAG INPUT
+   TAG INPUT + LIVE SUGGESTIONS
    ============================================= */
-tagInput.addEventListener('keydown', e => {
-  if ((e.key === 'Enter' || e.key === ',') && tagInput.value.trim()) {
-    e.preventDefault();
-    addTag(tagInput.value.trim().replace(/,/g, '').toLowerCase());
-    tagInput.value = '';
+const tagSuggest = document.getElementById('tag-suggest');
+const MAX_SUGGESTIONS = 8;
+
+let tagCounts        = null;   // cached [[tag, count], …]
+let tagCountsPromise = null;
+let suggestItems     = [];     // [{ tag, count, isNew }]
+let suggestIndex     = -1;     // keyboard-highlighted option (-1 = none)
+
+const normalizeTag = raw => raw.trim().replace(/,/g, '').toLowerCase();
+
+function loadTagCounts() {
+  if (tagCounts) return Promise.resolve(tagCounts);
+  if (!tagCountsPromise) {
+    tagCountsPromise = fetchTagCounts()
+      .then(rows => (tagCounts = rows))
+      .catch(err => {
+        console.error('[Tags] suggestions load error:', err);
+        tagCountsPromise = null;
+        return [];
+      });
   }
+  return tagCountsPromise;
+}
+
+// Call after anything that changes the set of tags (publish, edit, delete)
+function invalidateTagCounts() {
+  tagCounts = null;
+  tagCountsPromise = null;
+}
+
+function openSuggest() {
+  tagSuggest.classList.remove('hidden');
+  tagInput.setAttribute('aria-expanded', 'true');
+}
+
+function closeSuggest() {
+  tagSuggest.classList.add('hidden');
+  tagInput.setAttribute('aria-expanded', 'false');
+  tagInput.removeAttribute('aria-activedescendant');
+  suggestIndex = -1;
+}
+
+function highlightMatch(tag, q) {
+  const i = q ? tag.indexOf(q) : -1;
+  if (i === -1) return escapeHtml(tag);
+  return escapeHtml(tag.slice(0, i))
+       + '<mark>' + escapeHtml(tag.slice(i, i + q.length)) + '</mark>'
+       + escapeHtml(tag.slice(i + q.length));
+}
+
+function renderSuggestions(q) {
+  tagSuggest.innerHTML = '';
+  if (!suggestItems.length) { closeSuggest(); return; }
+
+  const hasExisting = suggestItems.some(s => !s.isNew);
+  if (hasExisting) {
+    const label = document.createElement('li');
+    label.className = 'tag-suggest-label';
+    label.setAttribute('role', 'presentation');
+    label.textContent = q ? 'Matching tags' : 'Your tags';
+    tagSuggest.appendChild(label);
+  }
+
+  suggestItems.forEach((item, i) => {
+    const li = document.createElement('li');
+    li.id = `tag-suggest-${i}`;
+    li.className = 'tag-suggest-item' + (item.isNew ? ' is-new' : '');
+    li.dataset.index = i;
+    li.setAttribute('role', 'option');
+
+    li.innerHTML = item.isNew
+      ? `<span class="tag-suggest-plus">+</span>
+         <span class="tag-suggest-name">Create “${escapeHtml(item.tag)}”</span>`
+      : `<span class="tag-suggest-name">${highlightMatch(item.tag, q)}</span>
+         <span class="tag-suggest-count" title="${item.count} post${item.count > 1 ? 's' : ''}">${item.count}</span>`;
+
+    tagSuggest.appendChild(li);
+  });
+
+  openSuggest();
+  paintSuggestActive();
+}
+
+function paintSuggestActive() {
+  tagSuggest.querySelectorAll('.tag-suggest-item').forEach((el, i) => {
+    el.classList.toggle('active', i === suggestIndex);
+    el.setAttribute('aria-selected', i === suggestIndex ? 'true' : 'false');
+  });
+  const active = tagSuggest.querySelector('.tag-suggest-item.active');
+  if (active) {
+    tagInput.setAttribute('aria-activedescendant', active.id);
+    active.scrollIntoView({ block: 'nearest' });
+  } else {
+    tagInput.removeAttribute('aria-activedescendant');
+  }
+}
+
+async function updateTagSuggestions() {
+  const q = normalizeTag(tagInput.value);
+  const counts = await loadTagCounts();
+
+  // Ignore stale responses (user kept typing / left the field)
+  if (normalizeTag(tagInput.value) !== q || document.activeElement !== tagInput) return;
+
+  const available = counts.filter(([t]) => !currentTags.includes(t));
+  let matches;
+  if (!q) {
+    matches = available;
+  } else {
+    matches = [
+      ...available.filter(([t]) => t.startsWith(q)),
+      ...available.filter(([t]) => !t.startsWith(q) && t.includes(q))
+    ];
+  }
+
+  suggestItems = matches.slice(0, MAX_SUGGESTIONS)
+    .map(([tag, count]) => ({ tag, count, isNew: false }));
+
+  const exists = counts.some(([t]) => t === q) || currentTags.includes(q);
+  if (q && !exists) suggestItems.push({ tag: q, count: 0, isNew: true });
+
+  suggestIndex = -1;
+  renderSuggestions(q);
+}
+
+function pickSuggestion(i) {
+  const item = suggestItems[i];
+  if (!item) return;
+  addTag(item.tag);
+  tagInput.value = '';
+  tagInput.focus();
+  updateTagSuggestions();   // stay open so several tags can be added quickly
+}
+
+tagInput.addEventListener('input',  updateTagSuggestions);
+tagInput.addEventListener('focus',  updateTagSuggestions);
+
+// Keep focus in the input while clicking an option
+tagSuggest.addEventListener('mousedown', e => e.preventDefault());
+tagSuggest.addEventListener('click', e => {
+  const li = e.target.closest('.tag-suggest-item');
+  if (li) pickSuggestion(Number(li.dataset.index));
+});
+tagSuggest.addEventListener('mousemove', e => {
+  const li = e.target.closest('.tag-suggest-item');
+  if (!li) return;
+  const i = Number(li.dataset.index);
+  if (i !== suggestIndex) { suggestIndex = i; paintSuggestActive(); }
+});
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('#tag-input-wrap')) closeSuggest();
+});
+tagInput.addEventListener('blur', () => setTimeout(closeSuggest, 120));
+
+tagInput.addEventListener('keydown', e => {
+  const open = !tagSuggest.classList.contains('hidden') && suggestItems.length > 0;
+
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    if (!open) { updateTagSuggestions(); return; }
+    e.preventDefault();
+    const n = suggestItems.length;
+    suggestIndex = e.key === 'ArrowDown'
+      ? (suggestIndex + 1) % n
+      : (suggestIndex - 1 + n) % n;
+    paintSuggestActive();
+    return;
+  }
+
+  if (e.key === 'Escape' && open) {
+    e.preventDefault();
+    closeSuggest();
+    return;
+  }
+
+  if (e.key === 'Tab' && open && tagInput.value.trim()) {
+    const target = suggestIndex >= 0 ? suggestIndex : suggestItems.findIndex(s => !s.isNew);
+    if (target >= 0) { e.preventDefault(); pickSuggestion(target); }
+    return;
+  }
+
+  if (e.key === 'Enter' || e.key === ',') {
+    if (e.key === 'Enter' && open && suggestIndex >= 0) {
+      e.preventDefault();
+      pickSuggestion(suggestIndex);
+      return;
+    }
+    if (tagInput.value.trim()) {
+      e.preventDefault();
+      addTag(normalizeTag(tagInput.value));
+      tagInput.value = '';
+      updateTagSuggestions();
+    }
+    return;
+  }
+
   if (e.key === 'Backspace' && !tagInput.value && currentTags.length > 0) {
     removeTag(currentTags[currentTags.length - 1]);
+    updateTagSuggestions();
   }
 });
 
@@ -1478,6 +1587,7 @@ publishBtn.addEventListener('click', async () => {
     isMathProof = false;
     mathProofImageUrl = null;
     updateMathProofToggleVisibility();
+    invalidateTagCounts();
     await applyFilters();
 
   } catch (err) {
@@ -3050,6 +3160,7 @@ function deletePost(id) {
       await db.from('comments').delete().eq('post_id', id);
       const { error } = await db.from('posts').delete().eq('id', id);
       if (error) throw error;
+      invalidateTagCounts();
       await applyFilters();
     } catch (err) {
       alert('Delete failed: ' + err.message);
