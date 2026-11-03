@@ -130,7 +130,12 @@
         <div id="quill-editor"></div>
         <div id="tag-area">
           <div id="tag-list"></div>
-          <input id="tag-input" type="text" placeholder="Add a tag, press Enter…">
+          <div id="tag-input-wrap">
+            <input id="tag-input" type="text" placeholder="Add a tag, press Enter…"
+                  autocomplete="off" role="combobox" aria-expanded="false"
+                  aria-controls="tag-suggest" aria-autocomplete="list">
+            <ul id="tag-suggest" class="tag-suggest hidden" role="listbox" aria-label="Tag suggestions"></ul>
+          </div>
         </div>
         <div id="editor-actions">
 
@@ -350,16 +355,6 @@
       </div>
 
       <button id="profile-save-btn" class="btn-primary profile-save-btn hidden">Save</button>
-    </div>
-  </div>
-
-  <div id="tag-area">
-    <div id="tag-list"></div>
-    <div id="tag-input-wrap">
-      <input id="tag-input" type="text" placeholder="Add a tag, press Enter…"
-            autocomplete="off" role="combobox" aria-expanded="false"
-            aria-controls="tag-suggest" aria-autocomplete="list">
-      <ul id="tag-suggest" class="tag-suggest hidden" role="listbox" aria-label="Tag suggestions"></ul>
     </div>
   </div>
 
