@@ -267,7 +267,6 @@
 .pm-avatar-row--disabled { opacity: .4; pointer-events: none; }
 
 .pm-avatar-preview { flex-shrink: 0; line-height: 0; }
-.pm-avatar-preview .persona-avatar { box-shadow: 0 4px 14px rgba(0,0,0,.08); }
 
 .pm-avatar-side { display: flex; flex-direction: column; gap: .5rem; min-width: 0; }
 .pm-avatar-actions { display: flex; flex-wrap: wrap; gap: .5rem; }

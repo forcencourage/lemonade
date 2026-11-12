@@ -2969,9 +2969,8 @@ div.quote-preview::before { font-size: 5.2rem; width: 2.4rem; height: 2.3rem; }
   height: 100%;
   margin: 0;
   object-fit: cover;
+  border: none;          
   border-radius: 50%;
-  border: 2px solid var(--avatar-color);
-  box-sizing: border-box;
   box-shadow: none;
 }
 
@@ -2981,4 +2980,3 @@ div.quote-preview::before { font-size: 5.2rem; width: 2.4rem; height: 2.3rem; }
 
 /* Persona modal */
 #persona-avatar { margin-bottom: 1rem; line-height: 0; }
-#persona-avatar .persona-avatar { box-shadow: 0 6px 18px rgba(0,0,0,.10); }
