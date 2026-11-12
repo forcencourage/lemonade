@@ -30,6 +30,17 @@ const pmDeleteBtn    = document.getElementById('pm-delete-btn');
 const pmStatusEl     = document.getElementById('pm-status');
 const pmActiveInput  = document.getElementById('pm-active-input');
 const pmActiveLabel  = document.getElementById('pm-active-label');
+const pmAvatarInput    = document.getElementById('pm-avatar-input');
+const pmAvatarRemove   = document.getElementById('pm-avatar-remove');
+const pmAvatarRow      = document.getElementById('pm-avatar-row');
+const pmAvatarPreview  = document.getElementById('pm-avatar-preview');
+const pmPreviewAvatar  = document.getElementById('pm-preview-avatar');
+
+const PM_AVATAR_SIZE = 256;
+let pmAvatarUrl     = null;   // saved avatar url of the selected persona
+let pmPendingBlob   = null;   // newly chosen image, not yet uploaded
+let pmPendingPreview = null;  // object URL for that blob
+let pmRemoveAvatar  = false;  // user clicked "Use default"
 
 /* ── Helpers ─────────────────────────────── */
 function pmSetStatus(text, isError = false) {
@@ -51,17 +62,62 @@ function pmNormalizeColor(c) {
   return ctx.fillStyle.toLowerCase();
 }
 
+function pmAvatarSrc() {
+  if (pmPendingPreview) return pmPendingPreview;
+  return pmRemoveAvatar ? null : pmAvatarUrl;
+}
+
+function pmResetAvatarState(url = null) {
+  if (pmPendingPreview) URL.revokeObjectURL(pmPendingPreview);
+  pmPendingPreview = null;
+  pmPendingBlob    = null;
+  pmRemoveAvatar   = false;
+  pmAvatarUrl      = url;
+}
+
+// Center-crop to a square, 256×256 webp
+async function pmAvatarToBlob(file) {
+  const bmp = await createImageBitmap(file);
+  const side = Math.min(bmp.width, bmp.height);
+  const sx = (bmp.width - side) / 2;
+  const sy = (bmp.height - side) / 2;
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = PM_AVATAR_SIZE;
+  canvas.getContext('2d').drawImage(bmp, sx, sy, side, side, 0, 0, PM_AVATAR_SIZE, PM_AVATAR_SIZE);
+  bmp.close?.();
+  return new Promise((resolve, reject) =>
+    canvas.toBlob(b => b ? resolve(b) : reject(new Error('toBlob failed')), 'image/webp', 0.88)
+  );
+}
+
+async function pmUploadAvatar(blob) {
+  const fileName = `persona-${Date.now()}-${Math.random().toString(36).slice(2)}.webp`;
+  const { error } = await db.storage.from('posts').upload(fileName, blob, { contentType: 'image/webp' });
+  if (error) throw error;
+  return `${SUPABASE_URL}/storage/v1/object/public/posts/${fileName}`;
+}
+
 function pmSetFormEnabled(on) {
-  [pmNameInput, pmColorInput, pmHexInput, pmDescInput, pmActiveInput].forEach(el => el.disabled = !on);  pmSwatchesEl.classList.toggle('pm-swatches--disabled', !on);
+  [pmNameInput, pmColorInput, pmHexInput, pmDescInput, pmActiveInput, pmAvatarInput, pmAvatarRemove]
+    .forEach(el => el.disabled = !on);
+  pmSwatchesEl.classList.toggle('pm-swatches--disabled', !on);
+  pmAvatarRow.classList.toggle('pm-avatar-row--disabled', !on);
   pmSaveBtn.disabled   = !on;
   pmDeleteBtn.disabled = !on || pmIsNew;
 }
 
 function pmUpdatePreview() {
   const color = PM_HEX_RE.test(pmColorInput.value) ? pmColorInput.value : '#888888';
+  const name  = pmNameInput.value.trim() || 'Persona';
+  const src   = pmAvatarSrc();
+
   pmPreview.style.setProperty('--comment-color', color);
-  pmPreviewName.textContent = pmNameInput.value.trim() || 'Persona';
+  pmPreviewName.textContent = name;
   pmPreviewName.style.color = color;
+
+  pmPreviewAvatar.innerHTML = personaAvatarHtml(name, color, 28, src, false);
+  pmAvatarPreview.innerHTML = personaAvatarHtml(name, color, 72, src, false);
+  pmAvatarRemove.hidden = !src;   // nothing to reset when already default
 }
 
 function pmSyncActiveUI() {
@@ -109,6 +165,7 @@ function closePersonasModal() {
   if (pmDirty && !confirm('Discard unsaved changes?')) return;
   pmModal.classList.add('hidden');
   document.body.style.overflow = '';
+  pmResetAvatarState(null);
   pmActiveId = null;
   pmIsNew = false;
   pmDirty = false;
@@ -120,7 +177,7 @@ async function pmLoadRows(selectId = null) {
 
   const { data, error } = await db
     .from('personas')
-    .select('id, name, color, description, is_active')
+    .select('id, name, color, description, is_active, avatar_url')
     .order('sort_order', { ascending: true });
 
   if (error) {
@@ -140,24 +197,24 @@ async function pmLoadRows(selectId = null) {
 function pmRenderList() {
   pmListEl.innerHTML = '';
 
-    pmRows.forEach(row => {
+  pmRows.forEach(row => {
     const off = row.is_active === false;
     const li = document.createElement('li');
     li.className = 'pm-item'
         + (!pmIsNew && row.id === pmActiveId ? ' active' : '')
         + (off ? ' pm-item--off' : '');
-    li.innerHTML = `<span class="pm-dot"></span><span class="pm-item-name"></span>${off ? '<span class="pm-off-badge">Off</span>' : ''}`;
-    li.querySelector('.pm-dot').style.background = pmNormalizeColor(row.color);
+    li.innerHTML = `${personaAvatarHtml(row.name, pmNormalizeColor(row.color), 22, row.avatar_url || null, false)}
+                    <span class="pm-item-name"></span>${off ? '<span class="pm-off-badge">Off</span>' : ''}`;
     li.querySelector('.pm-item-name').textContent = row.name;
     li.addEventListener('click', () => pmSelect(row.id));
     pmListEl.appendChild(li);
-    });
+  });
 
   if (pmIsNew) {
     const li = document.createElement('li');
     li.className = 'pm-item pm-item--pending active';
-    li.innerHTML = `<span class="pm-dot"></span><span class="pm-item-name">New persona</span>`;
-    li.querySelector('.pm-dot').style.background = pmColorInput.value;
+    li.innerHTML = `${personaAvatarHtml(pmNameInput.value.trim() || 'New persona', pmColorInput.value, 22, pmAvatarSrc(), false)}
+                    <span class="pm-item-name">${escapeHtml(pmNameInput.value.trim() || 'New persona')}</span>`;
     pmListEl.appendChild(li);
   }
 }
@@ -171,6 +228,7 @@ function pmSelect(id, force = false) {
   pmIsNew    = false;
   pmDirty    = false;
 
+  pmResetAvatarState(row.avatar_url || null);
   pmSetFormEnabled(true);
   pmNameInput.value = row.name;
   pmDescInput.value = row.description;
@@ -188,6 +246,8 @@ function pmStartNew(force = false) {
   pmIsNew    = true;
   pmDirty    = false;
 
+  pmResetAvatarState(null);
+
   pmSetFormEnabled(true);
   pmNameInput.value = '';
   pmDescInput.value = '';
@@ -202,7 +262,7 @@ function pmStartNew(force = false) {
 }
 
 /* ── Field events ────────────────────────── */
-pmNameInput.addEventListener('input', () => { pmUpdatePreview(); pmMarkDirty(); });
+pmNameInput.addEventListener('input', () => { pmUpdatePreview(); pmMarkDirty(); if (pmIsNew) pmRenderList(); });
 pmDescInput.addEventListener('input', pmMarkDirty);
 
 pmColorInput.addEventListener('input', () => pmSetColor(pmColorInput.value, { markDirty: true }));
@@ -217,6 +277,35 @@ pmHexInput.addEventListener('blur', () => { pmHexInput.value = pmColorInput.valu
 pmNewBtn.addEventListener('click', () => pmStartNew());
 
 pmActiveInput.addEventListener('change', () => { pmSyncActiveUI(); pmMarkDirty(); });
+
+pmAvatarInput.addEventListener('change', async () => {
+  const file = pmAvatarInput.files[0];
+  pmAvatarInput.value = '';
+  if (!file) return;
+  try {
+    const blob = await pmAvatarToBlob(file);
+    if (pmPendingPreview) URL.revokeObjectURL(pmPendingPreview);
+    pmPendingBlob    = blob;
+    pmPendingPreview = URL.createObjectURL(blob);
+    pmRemoveAvatar   = false;
+    pmUpdatePreview();
+    pmRenderList();
+    pmMarkDirty();
+  } catch (err) {
+    console.error('[Personas] avatar read error:', err);
+    pmSetStatus('Could not read this image', true);
+  }
+});
+
+pmAvatarRemove.addEventListener('click', () => {
+  if (pmPendingPreview) URL.revokeObjectURL(pmPendingPreview);
+  pmPendingPreview = null;
+  pmPendingBlob    = null;
+  pmRemoveAvatar   = true;
+  pmUpdatePreview();
+  pmRenderList();
+  pmMarkDirty();
+});
 
 /* ── Save ────────────────────────────────── */
 function pmFail(message, field) {
@@ -244,9 +333,13 @@ async function pmSave() {
   try {
     let savedId = pmActiveId;
 
+    // Avatar: upload new file, or clear, or keep
+    let avatar_url = pmRemoveAvatar ? null : pmAvatarUrl;
+    if (pmPendingBlob) avatar_url = await pmUploadAvatar(pmPendingBlob);
+
     if (pmIsNew) {
       const { data, error } = await db.from('personas')
-        .insert([{ name, color, description, is_active }])
+        .insert([{ name, color, description, is_active, avatar_url }])
         .select('id').single();
       if (error) throw error;
       savedId = data.id;
@@ -254,7 +347,7 @@ async function pmSave() {
       const previous = pmRows.find(r => r.id === pmActiveId);
 
       const { error } = await db.from('personas')
-        .update({ name, color, description, is_active })
+        .update({ name, color, description, is_active, avatar_url })
         .eq('id', pmActiveId);
       if (error) throw error;
 

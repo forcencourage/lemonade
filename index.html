@@ -204,6 +204,7 @@
   <div id="persona-modal" class="persona-modal hidden">
     <div class="persona-box">
       <button id="persona-close">✕</button>
+      <div id="persona-avatar"></div>
       <h1 id="persona-title"></h1>
       <p id="persona-text"></p>
     </div>
@@ -412,6 +413,24 @@
           </div>
 
           <div class="pm-field">
+            <span class="pm-label">Avatar</span>
+            <div class="pm-avatar-row" id="pm-avatar-row">
+              <div id="pm-avatar-preview" class="pm-avatar-preview"></div>
+              <div class="pm-avatar-side">
+                <div class="pm-avatar-actions">
+                  <label class="btn-ghost btn-sm pm-avatar-btn" id="pm-avatar-upload-label">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8l-5-5-5 5"/><path d="M12 3v12"/></svg>
+                    Upload image
+                    <input id="pm-avatar-input" type="file" accept="image/*" disabled hidden>
+                  </label>
+                  <button id="pm-avatar-remove" type="button" class="btn-ghost btn-sm pm-avatar-btn" disabled>Use default</button>
+                </div>
+                <p class="pm-avatar-hint">Square images work best. The default is two concentric circles in the persona color.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="pm-field">
             <span class="pm-label">Status</span>
             <label class="editor-toggle pm-active-toggle">
               <input type="checkbox" id="pm-active-input" checked disabled>
@@ -429,6 +448,7 @@
             <span class="pm-label">Preview</span>
             <div id="pm-preview" class="ai-comment">
               <div class="ai-comment-header">
+                <span id="pm-preview-avatar" class="pm-preview-avatar"></span>
                 <span class="ai-comment-name" id="pm-preview-name">Persona</span>
               </div>
               <div class="ai-comment-body">This is how this persona's comments will look under a post.</div>

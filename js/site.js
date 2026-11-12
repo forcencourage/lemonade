@@ -369,7 +369,41 @@ let videoSummaryEnabled = false;
 let isMathProof = false;
 let mathProofImageUrl = null;
 
+/* =============================================
+   PERSONA AVATARS
+   ============================================= */
+// Default avatar: two concentric circles (outer ring + inner dot) in the persona color
+function personaAvatarInner(url) {
+  if (url) return `<img src="${escapeHtml(url)}" alt="" loading="lazy" decoding="async">`;
+  return `
+    <svg viewBox="0 0 32 32" aria-hidden="true">
+      <circle cx="16" cy="16" r="14.5" fill="currentColor" fill-opacity=".07" stroke="currentColor" stroke-width="2.2"/>
+      <circle cx="16" cy="16" r="6" fill="currentColor"/>
+    </svg>`;
+}
 
+/**
+ * url === undefined → look the persona up in personalityMap
+ * url === null      → force the default avatar
+ */
+function personaAvatarHtml(name, color, size = 26, url = undefined, clickable = true) {
+  const p = personalityMap[name];
+  const src = url === undefined ? (p?.avatar || null) : url;
+  const c = color || p?.color || '#000000';
+  return `<span class="persona-avatar${clickable ? ' persona-name' : ''}"
+                data-persona="${escapeHtml(name)}"
+                style="--avatar-size:${size}px;--avatar-color:${escapeHtml(c)}">${personaAvatarInner(src)}</span>`;
+}
+
+// Called once personas are (re)loaded: comments may have rendered before the map was ready
+function refreshPersonaAvatars() {
+  document.querySelectorAll('.persona-avatar[data-persona]').forEach(el => {
+    if (el.closest('#pm-modal')) return;   // the manager handles its own previews
+    const p = personalityMap[el.dataset.persona];
+    if (!p) return;
+    el.innerHTML = personaAvatarInner(p.avatar || null);
+  });
+}
 
 /* =============================================
    LOAD PERSONALITIES
@@ -378,7 +412,7 @@ async function loadPersonalities() {
   try {
     const { data, error } = await db
       .from('personas')
-      .select('id, name, color, description, is_active')
+      .select('id, name, color, description, is_active, avatar_url')
       .order('sort_order', { ascending: true });
     if (error) throw error;
 
@@ -387,6 +421,7 @@ async function loadPersonalities() {
       name: p.name,
       color: p.color,
       persona: p.description,   // field name the ai-comment edge function expects
+      avatar: p.avatar_url || null,
       active: p.is_active !== false
     }));
 
@@ -401,6 +436,7 @@ async function loadPersonalities() {
     personalities = [];
     personalityMap = {};
   }
+  refreshPersonaAvatars();
   return personalities;
 }
 
@@ -2436,6 +2472,7 @@ function buildCommentEl(comment) {
 
   el.innerHTML = `
     <div class="ai-comment-header">
+      ${personaAvatarHtml(comment.persona_name, comment.persona_color, 28)}
       <span class="ai-comment-name persona-name" data-persona="${escapeHtml(comment.persona_name)}"
             style="color:${escapeHtml(comment.persona_color)}; cursor:pointer;">
         ${escapeHtml(comment.persona_name)}
@@ -3307,6 +3344,7 @@ const modal = document.getElementById("persona-modal");
 const personaTitle = document.getElementById("persona-title");
 const personaText = document.getElementById("persona-text");
 const personaClose = document.getElementById("persona-close");
+const personaAvatarEl = document.getElementById("persona-avatar");
 
 document.addEventListener("click", (e) => {
   const el = e.target.closest(".persona-name");
@@ -3315,6 +3353,7 @@ document.addEventListener("click", (e) => {
   const persona = personalityMap[el.dataset.persona];
   if (!persona) return;
 
+  personaAvatarEl.innerHTML = personaAvatarHtml(persona.name, persona.color, 72, persona.avatar || null, false);
   personaTitle.textContent = persona.name;
   personaTitle.style.color = persona.color || '#000';
   personaText.textContent = persona.persona;

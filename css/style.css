@@ -2937,3 +2937,48 @@ div.quote-preview::before { font-size: 5.2rem; width: 2.4rem; height: 2.3rem; }
   div.ql-pullquote::before { width: 2.2rem; height: 2.1rem; font-size: 4.8rem; }
   .ql-pullquote .pq-text { font-size: 1rem; }
 }
+
+/* =============================================
+   PERSONA AVATAR
+   ============================================= */
+.persona-avatar {
+  --avatar-size: 28px;
+  --avatar-color: #000;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  border-radius: 50%;
+  color: var(--avatar-color);
+  line-height: 0;
+  overflow: hidden;
+  vertical-align: middle;
+}
+.persona-avatar.persona-name { cursor: pointer; transition: transform 160ms ease; }
+.persona-avatar.persona-name:hover { transform: scale(1.08); }
+
+.persona-avatar svg { display: block; width: 100%; height: 100%; }
+
+.persona-avatar img {
+  display: block;
+  clear: none;
+  float: none;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  object-fit: cover;
+  border-radius: 50%;
+  border: 2px solid var(--avatar-color);
+  box-sizing: border-box;
+  box-shadow: none;
+}
+
+/* Comment header: avatar + name + date on one centered line */
+.ai-comment-header { align-items: center; }
+.ai-comment-header .persona-avatar { margin-right: -.1rem; }
+
+/* Persona modal */
+#persona-avatar { margin-bottom: 1rem; line-height: 0; }
+#persona-avatar .persona-avatar { box-shadow: 0 6px 18px rgba(0,0,0,.10); }
