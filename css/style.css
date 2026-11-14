@@ -3171,14 +3171,22 @@ div.quote-preview::before { font-size: 5.2rem; width: 2.4rem; height: 2.3rem; }
 /* =============================================
    LETTRINE
    ============================================= */
-/* Editor preview: simple drop cap */
-.ql-editor .ql-lettrine-on::first-letter {
+/* Editor preview: same generated initial, text wraps around it */
+.ql-editor .ql-lettrine-on { display: flow-root; }
+
+.ql-editor .ql-lettrine-on::before {
+  content: '';
   float: left;
-  font-family: 'DM Serif Display', Georgia, serif;
-  font-size: 4.2em;
-  line-height: .8;
-  padding: .06em .1em 0 0;
+  height: calc(5 * 1.75em);
+  width: calc(var(--lettrine-aspect, .8) * 5 * 1.75em);
+  background: var(--lettrine-img, none) left top / 100% 100% no-repeat;
+  shape-outside: var(--lettrine-img, none);
+  shape-image-threshold: .2;
+  shape-margin: .3em;
 }
+
+/* hide the real first letter only once the image is ready */
+.ql-container.has-lettrine-img .ql-lettrine-on::first-letter { font-size: 0; }
 
 /* Published post: generated initial the text wraps around */
 .post-body .has-lettrine { display: flow-root; }   /* contains the float */

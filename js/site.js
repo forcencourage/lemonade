@@ -1040,6 +1040,42 @@ quill.on('text-change', () => {
   updateVideoSummaryToggleVisibility();
 });
 
+/* ── Live lettrine preview in the editor ── */
+let lettrineEditorKey = '';
+let lettrineEditorTimer;
+
+async function syncEditorLettrine() {
+  const host  = quill.container;                       // .ql-container, outside Quill's content
+  const block = quill.root.querySelector('.ql-lettrine-on');
+  const ch    = block?.textContent.match(/^\s*([\p{L}\p{N}])/u)?.[1];
+
+  if (!ch) {
+    host.classList.remove('has-lettrine-img');
+    host.style.removeProperty('--lettrine-img');
+    host.style.removeProperty('--lettrine-aspect');
+    lettrineEditorKey = '';
+    return;
+  }
+
+  const key = ch.toUpperCase();
+  if (key === lettrineEditorKey && host.classList.contains('has-lettrine-img')) return;
+
+  try {
+    const asset = await makeLettrine(key);
+    host.style.setProperty('--lettrine-img', `url("${asset.url}")`);
+    host.style.setProperty('--lettrine-aspect', asset.aspect.toFixed(4));
+    host.classList.add('has-lettrine-img');
+    lettrineEditorKey = key;
+  } catch (err) {
+    console.warn('[Lettrine] editor preview failed:', err);
+  }
+}
+
+quill.on('text-change', () => {
+  clearTimeout(lettrineEditorTimer);
+  lettrineEditorTimer = setTimeout(syncEditorLettrine, 200);
+});
+
 function updateVideoSummaryToggleVisibility() {
   const html = quill.root.innerHTML;
   const hasYouTube = /youtube\.com\/embed\/([\w-]{11})/.test(html);
@@ -3249,7 +3285,7 @@ async function applyLettrine(root) {
   // The DOM may have changed while the font / image was loading
   const node = findNode();
   const mm = node?.data.match(RE);
-  if (!block.isConnected || !mm || block.querySelector('.lettrine')) return;
+  if (!root.contains(block) || !mm || block.querySelector('.lettrine')) return;
 
   node.data = node.data.slice(mm[0].length);
 
