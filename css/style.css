@@ -3167,3 +3167,47 @@ div.quote-preview::before { font-size: 5.2rem; width: 2.4rem; height: 2.3rem; }
   font-size: .82rem;
   color: var(--text-muted);
 }
+
+/* =============================================
+   LETTRINE
+   ============================================= */
+/* Editor preview: simple drop cap */
+.ql-editor .ql-lettrine-on::first-letter {
+  float: left;
+  font-family: 'DM Serif Display', Georgia, serif;
+  font-size: 4.2em;
+  line-height: .8;
+  padding: .06em .1em 0 0;
+}
+
+/* Published post: generated initial the text wraps around */
+.post-body .has-lettrine { display: flow-root; }   /* contains the float */
+
+.post-body .lettrine {
+  --lettrine-lines: 5;
+  --lettrine-aspect: .8;
+  --lettrine-img: none;
+  float: left;
+  display: block;
+  height: calc(var(--lettrine-lines) * 1.8em);        /* 1.8 = post line-height */
+  width: calc(var(--lettrine-aspect) * var(--lettrine-lines) * 1.8em);
+  background: var(--lettrine-img) left top / 100% 100% no-repeat;
+  shape-outside: var(--lettrine-img);                 /* the text molds the letter */
+  shape-image-threshold: .2;
+  shape-margin: .3em;
+  pointer-events: none;
+  user-select: none;
+}
+
+.lettrine-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .post-body .lettrine { --lettrine-lines: 4; }
+}

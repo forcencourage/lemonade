@@ -764,6 +764,32 @@ quoteModal.addEventListener('keydown', e => {
 function quoteHandler() { openQuoteModal(); }
 
 /* =============================================
+   LETTRINE FORMAT (block-level class)
+   ============================================= */
+const Parchment = Quill.import('parchment');
+const LettrineAttr = new Parchment.ClassAttributor('lettrine', 'ql-lettrine', {
+  scope: Parchment.Scope.BLOCK,
+  whitelist: ['on']
+});
+Quill.register({ 'formats/lettrine': LettrineAttr }, true);
+
+icons['lettrine'] = `
+  <svg viewBox="0 0 18 18">
+    <text x="0" y="13" font-size="15" font-family="Georgia, serif" font-weight="700" fill="currentColor">A</text>
+    <path d="M10.5 4h6.5M10.5 8h6.5M2 16h15" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" fill="none"/>
+  </svg>
+`;
+
+// Toggle on the current paragraph (only one lettrine per post)
+function lettrineHandler() {
+  const range = quill.getSelection(true);
+  if (!range) return;
+  const active = !!quill.getFormat(range).lettrine;
+  quill.formatLine(0, quill.getLength(), 'lettrine', false, 'api');
+  if (!active) quill.formatLine(range.index, Math.max(range.length, 1), 'lettrine', 'on', 'user');
+}
+
+/* =============================================
    QUILL SETUP
    ============================================= */
 const quill = new Quill('#quill-editor', {
@@ -781,7 +807,7 @@ const quill = new Quill('#quill-editor', {
         [{ align: [] }],
         ['blockquote', 'code-block'],
         [{ list: 'ordered' }, { list: 'bullet' }],
-        ['link', 'image', 'video', 'tweet', 'mathproof', 'math', 'pullquote'],
+        ['link', 'image', 'video', 'tweet', 'mathproof', 'math', 'pullquote', 'lettrine'],
         ['table'],
         ['clean']
       ],
@@ -792,6 +818,7 @@ const quill = new Quill('#quill-editor', {
         math: mathHandler,
         mathproof: mathProofHandler,
         pullquote: quoteHandler,
+        lettrine: lettrineHandler,
         table: function() {
           quill.getModule('table').insertTable(1, 2);
         }
@@ -808,6 +835,7 @@ document.querySelector('.ql-toolbar .ql-mathproof')?.setAttribute('title', 'Impo
 document.querySelector('.ql-toolbar .ql-math')?.setAttribute('title', 'Insert equation (LaTeX)');
 
 document.querySelector('.ql-toolbar .ql-pullquote')?.setAttribute('title', 'Insert a quote');
+document.querySelector('.ql-toolbar .ql-lettrine')?.setAttribute('title', 'Drop cap (lettrine) on this paragraph');
 
 function mathHandler() {
   openMathModal();
@@ -2968,9 +2996,6 @@ async function reRenderCurrentPosts() {
   loadMoreBtn.classList.toggle('hidden', !hasMorePosts);
 }
 
-/* =============================================
-   BUILD POST CARD
-   ============================================= */
 function optimizeImages(html) {
   const div = document.createElement('div');
   div.innerHTML = html;
@@ -3089,6 +3114,159 @@ function applyPostTruncation(card) {
   });
 }
 
+/* =============================================
+   LETTRINE — half human / half neural network
+   ============================================= */
+const LETTRINE_H = 420;               // intrinsic image height (px)
+const lettrineCache = new Map();      // letter → Promise<{ url, aspect }>
+
+function lettrineRng(seed) {
+  let s = (seed >>> 0) || 1;
+  return () => (s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 4294967296;
+}
+
+function makeLettrine(letter) {
+  const key = letter.toUpperCase();
+  if (!lettrineCache.has(key)) lettrineCache.set(key, drawLettrine(key));
+  return lettrineCache.get(key);
+}
+
+async function drawLettrine(letter) {
+  const FONT = '"DM Serif Display", Georgia, serif';
+  try { await document.fonts.load(`400 200px ${FONT}`, letter); } catch (_) {}
+
+  const H = LETTRINE_H;
+  const padV = H * 0.03, padL = H * 0.03, padR = H * 0.08;   // right padding = breathing room for the text
+
+  // Measure the glyph and scale it to fill the height
+  const meas = document.createElement('canvas').getContext('2d');
+  meas.font = `400 600px ${FONT}`;
+  const m  = meas.measureText(letter);
+  const gh = m.actualBoundingBoxAscent + m.actualBoundingBoxDescent;
+  const gw = m.actualBoundingBoxLeft   + m.actualBoundingBoxRight;
+  const k  = (H - 2 * padV) / gh;
+  const W  = Math.ceil(gw * k + padL + padR);
+  const gx = padL + m.actualBoundingBoxLeft * k;
+  const gy = padV + m.actualBoundingBoxAscent * k;
+  const midX = Math.round(padL + gw * k * 0.5);
+
+  const glyph = (ctx, fill) => {
+    ctx.font = `400 ${600 * k}px ${FONT}`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = fill;
+    ctx.fillText(letter, gx, gy);
+  };
+  const mk = () => {
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    return c;
+  };
+
+  // Mask, used to place nodes only inside the letter
+  const mask = mk(), mc = mask.getContext('2d', { willReadFrequently: true });
+  glyph(mc, '#000');
+  const px = mc.getImageData(0, 0, W, H).data;
+  const inside = (x, y) =>
+    x >= 0 && y >= 0 && x < W && y < H && px[((y | 0) * W + (x | 0)) * 4 + 3] > 140;
+
+  // Nodes (dart throwing, seeded by the letter so it's stable)
+  const rnd = lettrineRng(letter.codePointAt(0) * 7919);
+  const pts = [];
+  let minD = H * 0.13;
+  for (let pass = 0; pass < 4 && pts.length < 12; pass++, minD *= 0.8) {
+    for (let i = 0; i < 3000 && pts.length < 16; i++) {
+      const x = midX - W * 0.02 + rnd() * (W - midX);
+      const y = rnd() * H;
+      if (!inside(x, y)) continue;
+      if (pts.some(p => Math.hypot(p.x - x, p.y - y) < minD)) continue;
+      pts.push({ x, y, r: H * (0.013 + rnd() * 0.012) });
+    }
+  }
+
+  // Edges: each node linked to its 2 nearest neighbours
+  const edges = new Set();
+  pts.forEach((a, i) => {
+    pts.map((b, j) => ({ j, d: i === j ? Infinity : Math.hypot(a.x - b.x, a.y - b.y) }))
+       .sort((p, q) => p.d - q.d)
+       .slice(0, 2)
+       .forEach(({ j }) => edges.add(i < j ? `${i}-${j}` : `${j}-${i}`));
+  });
+
+  // Right half: gray letter + network
+  const layer = mk(), lc = layer.getContext('2d');
+  lc.save();
+  lc.beginPath(); lc.rect(midX, 0, W - midX, H); lc.clip();
+  glyph(lc, '#e7e7e7');
+  lc.restore();
+
+  lc.globalCompositeOperation = 'source-atop';       // lines stay inside the letter
+  lc.strokeStyle = '#111';
+  lc.lineWidth = H * 0.006;
+  lc.lineCap = 'round';
+  edges.forEach(key => {
+    const [i, j] = key.split('-').map(Number);
+    lc.beginPath();
+    lc.moveTo(pts[i].x, pts[i].y);
+    lc.lineTo(pts[j].x, pts[j].y);
+    lc.stroke();
+  });
+  lc.globalCompositeOperation = 'source-over';
+  lc.fillStyle = '#111';
+  pts.forEach(p => { lc.beginPath(); lc.arc(p.x, p.y, p.r, 0, Math.PI * 2); lc.fill(); });
+
+  // Final image: black left half + network right half
+  const out = mk(), oc = out.getContext('2d');
+  oc.save();
+  oc.beginPath(); oc.rect(0, 0, midX, H); oc.clip();
+  glyph(oc, '#000');
+  oc.restore();
+  oc.drawImage(layer, 0, 0);
+
+  return { url: out.toDataURL('image/png'), aspect: W / H };
+}
+
+// Replaces the first letter of the flagged paragraph with the generated initial
+async function applyLettrine(root) {
+  const block = root.querySelector('.post-body .ql-lettrine-on');
+  if (!block || block.querySelector('.lettrine')) return;
+
+  const RE = /^(\s*)([\p{L}\p{N}])/u;
+  const findNode = () => {
+    const w = document.createTreeWalker(block, NodeFilter.SHOW_TEXT);
+    let n;
+    while ((n = w.nextNode())) if (n.data.trim()) return n;
+    return null;
+  };
+
+  const m = findNode()?.data.match(RE);
+  if (!m) return;
+
+  let asset;
+  try { asset = await makeLettrine(m[2]); }
+  catch (err) { console.warn('[Lettrine] failed:', err); return; }
+
+  // The DOM may have changed while the font / image was loading
+  const node = findNode();
+  const mm = node?.data.match(RE);
+  if (!block.isConnected || !mm || block.querySelector('.lettrine')) return;
+
+  node.data = node.data.slice(mm[0].length);
+
+  const sr = document.createElement('span');          // keeps the letter selectable / readable
+  sr.className = 'lettrine-sr';
+  sr.textContent = mm[2];
+
+  const el = document.createElement('span');
+  el.className = 'lettrine';
+  el.setAttribute('aria-hidden', 'true');
+  el.style.setProperty('--lettrine-aspect', asset.aspect.toFixed(4));
+  el.style.setProperty('--lettrine-img', `url("${asset.url}")`);
+
+  block.prepend(el, sr);
+  block.classList.add('has-lettrine');
+}
+
 function buildPostCard(post) {
   const card = document.createElement('article');
   card.className  = `post-card${post.is_private ? ' post-card--private' : ''}`;
@@ -3166,6 +3344,8 @@ function buildPostCard(post) {
     </div>
   </div>
 ` + adminBar;
+
+  applyLettrine(card);
 
   const tweetNodes = card.querySelectorAll('.ql-tweet');
   if (tweetNodes.length) {
