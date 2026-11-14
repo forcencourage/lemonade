@@ -406,6 +406,43 @@ function refreshPersonaAvatars() {
 }
 
 /* =============================================
+   ELAPSED TIME
+   ============================================= */
+const RTF = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+const TIME_UNITS = [
+  ['year', 31536000], ['month', 2592000], ['week', 604800],
+  ['day', 86400], ['hour', 3600], ['minute', 60]
+];
+
+function timeAgo(input) {
+  const ts = new Date(input).getTime();
+  if (isNaN(ts)) return '';
+  const diff = Math.trunc((ts - Date.now()) / 1000);   // negative = past
+  const abs  = Math.abs(diff);
+  if (diff > 0 || abs < 45) return 'just now';
+  for (const [unit, secs] of TIME_UNITS) {
+    if (abs >= secs) return RTF.format(Math.trunc(diff / secs), unit);
+  }
+  return 'just now';
+}
+
+// <time> element: shows "2 days ago", full date on hover
+function timeHtml(input, cls = '') {
+  const d = new Date(input);
+  const full = d.toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+             + ' · ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  return `<time class="${cls}" datetime="${d.toISOString()}" title="${escapeHtml(full)}" data-ts="${d.getTime()}">${timeAgo(d)}</time>`;
+}
+
+// Keep visible timestamps fresh
+setInterval(() => {
+  document.querySelectorAll('time[data-ts]').forEach(el => {
+    const t = timeAgo(Number(el.dataset.ts));
+    if (el.textContent !== t) el.textContent = t;
+  });
+}, 60000);
+
+/* =============================================
    LOAD PERSONALITIES
    ============================================= */
 async function loadPersonalities() {
@@ -1263,6 +1300,7 @@ function loadTagCounts() {
 function invalidateTagCounts() {
   tagCounts = null;
   tagCountsPromise = null;
+  randomMenuData = null;
 }
 
 function openSuggest() {
@@ -2466,10 +2504,6 @@ function buildCommentEl(comment) {
   el.dataset.commentId = comment.id || '';         // ← store id on element
   el.style.setProperty('--comment-color', comment.persona_color);
 
-  const dateStr = new Date(comment.created_at).toLocaleDateString('en-US', {
-    year: 'numeric', month: 'long', day: 'numeric'
-  });
-
   el.innerHTML = `
     <div class="ai-comment-header">
       ${personaAvatarHtml(comment.persona_name, comment.persona_color, 28)}
@@ -2477,7 +2511,7 @@ function buildCommentEl(comment) {
             style="color:${escapeHtml(comment.persona_color)}; cursor:pointer;">
         ${escapeHtml(comment.persona_name)}
       </span>
-      <span class="ai-comment-date">${dateStr}</span>
+      ${timeHtml(comment.created_at, 'ai-comment-date')}
     </div>
     <div class="ai-comment-body">${escapeHtml(comment.content)}</div>
   `;
@@ -2618,14 +2652,10 @@ function buildNegationEl(n) {
   el.dataset.commentId = n.id || '';
   el.style.setProperty('--comment-color', NEGATION_COLOR);
 
-  const dateStr = new Date(n.created_at || Date.now()).toLocaleDateString('en-US', {
-    year: 'numeric', month: 'long', day: 'numeric'
-  });
-
   el.innerHTML = `
     <div class="ai-comment-header">
       <span class="ai-comment-name" style="color:#000000;">NEGATION</span>
-      <span class="ai-comment-date">${dateStr}</span>
+      ${timeHtml(n.created_at || Date.now(), 'ai-comment-date')}
     </div>
     <div class="ai-comment-body">${escapeHtml(n.content)}</div>
   `;
@@ -3064,10 +3094,6 @@ function buildPostCard(post) {
   card.className  = `post-card${post.is_private ? ' post-card--private' : ''}`;
   card.dataset.id = post.id;
 
-  const dateStr = new Date(post.created_at).toLocaleDateString('en-US', {
-    year: 'numeric', month: 'long', day: 'numeric'
-  });
-
   const tags = Array.isArray(post.tags) ? post.tags : [];
   const author = post.author || 'anonymous';
 
@@ -3084,12 +3110,14 @@ function buildPostCard(post) {
   let metaHtml = `
     <div class="post-meta">
       <div class="post-meta-left">
-        <span class="post-author">
-          <span class="post-author-avatar" data-author="${escapeHtml(author)}">${author[0].toUpperCase()}</span>
-          ${author}
-        </span>
-        <span class="post-date">${dateStr}</span>
-        ${privacyBadge}
+        <span class="post-author-avatar" data-author="${escapeHtml(author)}">${escapeHtml([...author][0].toUpperCase())}</span>
+        <div class="post-byline">
+          <span class="post-author-name" data-author="${escapeHtml(author)}">${escapeHtml(author)}</span>
+          <div class="post-byline-sub">
+            ${timeHtml(post.created_at, 'post-time')}
+            ${privacyBadge}
+          </div>
+        </div>
       </div>
       <div class="post-meta-tags">
   `;
@@ -3164,12 +3192,7 @@ function buildPostCard(post) {
   card.querySelector('.btn-edit')?.addEventListener('click', () => editPost(post));
   card.querySelector('.btn-share')?.addEventListener('click', () => openShareModal(post.id));
 
-  // Async avatar injection — fires after card is returned and attached
-  getAuthorAvatar(author).then(url => {
-    if (!url) return;
-    const avatarEl = card.querySelector('.post-author-avatar');
-    if (avatarEl) avatarEl.innerHTML = `<img src="${escapeHtml(url)}" alt="${escapeHtml(author[0].toUpperCase())}">`;
-  });
+  getAuthorProfile(author).then(p => applyAuthorProfile(card, author, p));
 
   return card;
 }
@@ -4030,17 +4053,37 @@ function refreshPanel() {
    ============================================= */
 
 let profileCache = {};   // keyed by uid, avoids redundant DB reads
-const avatarCache = {};   // username → url string or null
+const authorProfileCache = {};   // username → Promise<{ avatar_url, display_name }>
 
-async function getAuthorAvatar(username) {
-  if (username in avatarCache) return avatarCache[username];
-  const { data } = await db
-    .from('profiles')
-    .select('avatar_url')
-    .like('email', `${username}@%`)
-    .maybeSingle();
-  avatarCache[username] = data?.avatar_url || null;
-  return avatarCache[username];
+function getAuthorProfile(username) {
+  if (!authorProfileCache[username]) {
+    authorProfileCache[username] = db
+      .from('profiles')
+      .select('avatar_url, display_name')
+      .like('email', `${username}@%`)
+      .maybeSingle()
+      .then(({ data }) => ({
+        avatar_url:   data?.avatar_url || null,
+        display_name: (data?.display_name || '').trim() || null
+      }))
+      .catch(() => ({ avatar_url: null, display_name: null }));
+  }
+  return authorProfileCache[username];
+}
+
+// Updates every avatar + name of this author inside `root`
+function applyAuthorProfile(root, username, profile) {
+  const name = profile?.display_name || username;
+  const sel  = `[data-author="${CSS.escape(username)}"]`;
+
+  root.querySelectorAll(`.post-author-name${sel}`).forEach(el => { el.textContent = name; });
+  root.querySelectorAll(`.post-author-avatar${sel}`).forEach(el => {
+    if (profile?.avatar_url) {
+      el.innerHTML = `<img src="${escapeHtml(profile.avatar_url)}" alt="">`;
+    } else {
+      el.textContent = [...name][0].toUpperCase();
+    }
+  });
 }
 
 const profileModal      = document.getElementById('profile-modal');
@@ -4053,6 +4096,15 @@ const profileEmailDisp  = document.getElementById('profile-email-display');
 const profileBioInput   = document.getElementById('profile-bio-input');
 const profileBioDisp    = document.getElementById('profile-bio-display');
 const profileSaveBtn    = document.getElementById('profile-save-btn');
+
+const profileNameField = document.getElementById('profile-name-field');
+const profileNameInput = document.getElementById('profile-name-input');
+let profileTargetUsername = '';
+
+profileNameInput.addEventListener('input', () => {
+  const el = profileAvatarWrap.querySelector('.profile-author-name');
+  if (el) el.textContent = profileNameInput.value.trim() || profileTargetUsername;
+});
 
 let profileTargetUid    = null;   // uid of the profile being viewed
 let profilePendingBlob  = null;   // new avatar blob waiting to be saved
@@ -4093,6 +4145,11 @@ function renderAvatarDisp(url, initial) {
 async function openProfileModal(authorUsername, viewerIsOwner) {
   profilePendingBlob    = null;
   profilePendingPreview = null;
+
+  profileTargetUsername = authorUsername;
+  profileNameField.classList.toggle('hidden', !viewerIsOwner);
+  profileNameInput.value = '';
+  profileNameInput.placeholder = authorUsername;
 
   profileAvatarLbl.classList.toggle('hidden', !viewerIsOwner);
   profileBioInput.classList.toggle('hidden', !viewerIsOwner);
@@ -4165,6 +4222,10 @@ async function openProfileModal(authorUsername, viewerIsOwner) {
   }
 
   profileEmailDisp.textContent = email;
+
+  const shownName = (profile?.display_name || '').trim() || authorUsername;
+  nameEl.textContent = shownName;
+  if (viewerIsOwner) profileNameInput.value = shownName;
 
   // ── Populate UI from profile ───────────────────────────────────
   const bioField = document.getElementById('profile-bio-field');
@@ -4360,19 +4421,24 @@ profileSaveBtn.addEventListener('click', async () => {
 
     const { data: { session } } = await db.auth.getSession();
     const email = session?.user?.email || '';
-    const bio   = profileBioInput.value.trim();
+    const bio = profileBioInput.value.trim();
+    const typedName = profileNameInput.value.trim();
+    const display_name = typedName && typedName !== currentUsername ? typedName : null;   // null → default
 
     const { error } = await db.from('profiles').upsert({
       id:         profileTargetUid,
       email,
       avatar_url: avatarUrl,
       bio,
+      display_name,
       updated_at: new Date().toISOString()
     }, { onConflict: 'id' });
     if (error) throw error;
 
-    // Bust cache
+    // Bust caches and refresh every visible post by this author
     delete profileCache[currentUsername];
+    delete authorProfileCache[currentUsername];
+    getAuthorProfile(currentUsername).then(p => applyAuthorProfile(document, currentUsername, p));
 
     closeProfileModal();
   } catch (err) {
@@ -4386,7 +4452,7 @@ profileSaveBtn.addEventListener('click', async () => {
 
 /* ── Delegate click on author name/avatar in post cards ── */
 document.getElementById('posts-feed').addEventListener('click', e => {
-  const el = e.target.closest('.post-author');
+  const el = e.target.closest('.post-author-avatar, .post-author-name');
   if (!el) return;
   const card   = el.closest('[data-id]');
   if (!card) return;
@@ -4399,41 +4465,147 @@ document.getElementById('posts-feed').addEventListener('click', e => {
 });
 
 /* =============================================
-   RANDOM POST
+   RANDOM POST — tag dropdown
    ============================================= */
-async function goToRandomPost(btn) {
+let randomMenuData = null;   // cached Promise<{ tags: [[tag,count],…], total }>
+
+async function fetchPublicTagCounts() {
+  const rows = await fetchTagRows(q => q.eq('is_private', false));
+  const counts = new Map();
+  rows.forEach(r => (Array.isArray(r.tags) ? r.tags : []).forEach(t =>
+    counts.set(t, (counts.get(t) || 0) + 1)));
+  return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
+}
+
+function loadRandomMenuData() {
+  if (!randomMenuData) {
+    randomMenuData = Promise.all([
+      fetchPublicTagCounts(),
+      db.from('posts').select('id', { count: 'exact', head: true }).eq('is_private', false)
+    ])
+      .then(([tags, { count }]) => ({ tags, total: count || 0 }))
+      .catch(err => { randomMenuData = null; throw err; });
+  }
+  return randomMenuData;
+}
+
+async function goToRandomPost(btn, tag = null) {
   btn.classList.remove('rolling');
   void btn.offsetWidth;
   btn.classList.add('rolling');
   btn.disabled = true;
 
   try {
-    const { data, error } = await db
-      .from('posts')
-      .select('id')
-      .eq('is_private', false);
+    let q = db.from('posts').select('id').eq('is_private', false);
+    if (tag) q = q.contains('tags', [tag]);
+    const { data, error } = await q;
+    if (error || !data?.length) throw error || new Error('No posts');
 
-    if (error || !data || !data.length) return;
+    // Avoid landing on the post you're already reading
+    const currentId = location.pathname.match(/\/post\/([a-f0-9-]{36})/i)?.[1];
+    const pool = data.length > 1 ? data.filter(p => p.id !== currentId) : data;
+    const pick = pool[Math.floor(Math.random() * pool.length)];
 
-    const pick = data[Math.floor(Math.random() * data.length)];
     const SITE_BASE = location.hostname === 'forcencourage.github.io'
       ? `${location.origin}/lemonade`
       : location.origin;
 
-    setTimeout(() => {
-      window.location.href = `${SITE_BASE}/post/${pick.id}`;
-    }, 480);
+    setTimeout(() => { window.location.href = `${SITE_BASE}/post/${pick.id}`; }, 480);
 
   } catch (err) {
     console.error('[Random post] failed:', err);
     btn.disabled = false;
     btn.classList.remove('rolling');
+    saveToast('No post found.');
   }
 }
 
-function attachRandomBtn(btn) {
-  btn.addEventListener('click', () => goToRandomPost(btn));
+function fillRandomMenu(menu, data, onPick) {
+  const list = menu.querySelector('.random-menu-list');
+  menu.querySelector('.random-menu-any .random-menu-count').textContent = data.total;
+  list.innerHTML = '';
+
+  if (!data.tags.length) {
+    list.innerHTML = '<li class="random-menu-state">No tags yet.</li>';
+    return;
+  }
+
+  data.tags.forEach(([tag, count]) => {
+    const li = document.createElement('li');
+    li.innerHTML = `
+      <button type="button" role="menuitem" class="random-menu-item" title="${count} post${count > 1 ? 's' : ''}">
+        <span class="random-menu-name">${escapeHtml(tag)}</span>
+        <span class="random-menu-count">${count}</span>
+      </button>`;
+    li.firstElementChild.addEventListener('click', () => onPick(tag));
+    list.appendChild(li);
+  });
 }
+
+function closeRandomMenus(except = null) {
+  document.querySelectorAll('.random-menu-wrap.open').forEach(w => {
+    if (w === except) return;
+    w.classList.remove('open');
+    w.querySelector('.random-btn')?.setAttribute('aria-expanded', 'false');
+  });
+}
+
+function attachRandomBtn(btn) {
+  if (!btn || btn.dataset.menuReady) return;
+  btn.dataset.menuReady = '1';
+
+  const wrap = document.createElement('div');
+  wrap.className = 'random-menu-wrap';
+  btn.parentNode.insertBefore(wrap, btn);
+  wrap.appendChild(btn);
+
+  const menu = document.createElement('div');
+  menu.className = 'random-menu';
+  menu.setAttribute('role', 'menu');
+  menu.innerHTML = `
+    <div class="random-menu-head">Random post</div>
+    <button type="button" role="menuitem" class="random-menu-item random-menu-any">
+      <span class="random-menu-name">Any post</span>
+      <span class="random-menu-count">–</span>
+    </button>
+    <div class="random-menu-divider"></div>
+    <div class="random-menu-head">By tag</div>
+    <ul class="random-menu-list" role="none"></ul>
+  `;
+  wrap.appendChild(menu);
+
+  const list = menu.querySelector('.random-menu-list');
+  btn.setAttribute('aria-haspopup', 'menu');
+  btn.setAttribute('aria-expanded', 'false');
+
+  const pick = tag => {
+    closeRandomMenus();
+    goToRandomPost(btn, tag);
+  };
+
+  menu.querySelector('.random-menu-any').addEventListener('click', () => pick(null));
+
+  btn.addEventListener('click', async () => {
+    const open = wrap.classList.toggle('open');
+    btn.setAttribute('aria-expanded', String(open));
+    if (!open) return;
+
+    list.innerHTML = '<li class="random-menu-state">Loading…</li>';
+    try {
+      fillRandomMenu(menu, await loadRandomMenuData(), pick);
+    } catch (err) {
+      console.error('[Random menu] load error:', err);
+      list.innerHTML = '<li class="random-menu-state">Could not load tags.</li>';
+    }
+  });
+}
+
+document.addEventListener('click', e => {
+  document.querySelectorAll('.random-menu-wrap.open').forEach(w => {
+    if (!w.contains(e.target)) closeRandomMenus();
+  });
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeRandomMenus(); });
 
 attachRandomBtn(document.getElementById('random-btn'));
 

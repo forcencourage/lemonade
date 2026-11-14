@@ -81,7 +81,7 @@
       </div>
     </div>
     <div class="nav-right">
-      <button id="random-btn" class="icon-btn random-btn" title="Random post">
+      <button id="random-btn" class="icon-btn random-btn" title="Random post by tag">
         <svg width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
           <g transform="rotate(-12, 13, 8)">
             <rect x="7" y="1" width="11" height="11" rx="2" fill="white" stroke="black" stroke-width="1.4"/>
@@ -342,6 +342,12 @@
             <input id="profile-avatar-input" type="file" accept="image/*" style="display:none;">
           </label>
         </div>
+      </div>
+
+      <div id="profile-name-field" class="profile-field hidden">
+        <span class="profile-field-label">Name</span>
+        <input id="profile-name-input" class="profile-name-input" type="text" maxlength="40" autocomplete="off" placeholder="Display name">
+        <p class="profile-field-hint">Shown on your posts. Leave empty to use the part of your email before the @.</p>
       </div>
 
       <div class="profile-field">
