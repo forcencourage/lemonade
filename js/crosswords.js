@@ -518,11 +518,10 @@
       if (cell.valEl.textContent !== cell.value) cell.valEl.textContent = cell.value;
     }));
 
-    // Score: each word pays out once, and only if found without any help
+    // Score: each word pays out once (finishing it by typing counts, even after a revealed letter)
     if (newly.length) {
-      const fresh = newly.filter(e => !e.scored);
+      const earned = newly.filter(e => !e.scored).length;
       newly.forEach(e => { e.scored = true; });
-      const earned = fresh.filter(e => !e.cells.some(c => c && c.revealed)).length;
       if (earned) addScore(earned * PTS_FOUND);
     }
 
@@ -928,6 +927,7 @@
     target.revealed = true;
 
     addScore(PTS_REVEAL_LETTER);
+    if (e.cells.every(c => !c || c.value === c.letter)) e.scored = true;
 
     // Keep the cursor inside this word, on the next missing letter
     const nextMissing = e.cells.find(c => c && c.value !== c.letter);
@@ -946,6 +946,7 @@
     e.cells.forEach(c => {
       if (c && c.value !== c.letter) { c.value = c.letter; c.revealed = true; }
     });
+    e.scored = true;
     addScore(PTS_REVEAL_WORD);
     refresh(true);   // recomputes solved state + plays the yellow pop
     goToNextUnsolved(e);
@@ -955,6 +956,7 @@
   function reveal() {
     if (!puzzle || puzzle.complete) return;
     if (!confirm('Reveal all answers?')) return;
+    puzzle.entries.forEach(e => { e.scored = true; });
     addScore(PTS_REVEAL_WORD * puzzle.entries.filter(e => !e.solved).length);
     puzzle.grid.forEach(row => row.forEach(c => {
       if (c && c.value !== c.letter) { c.value = c.letter; c.revealed = true; }
