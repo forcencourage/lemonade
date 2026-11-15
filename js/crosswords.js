@@ -7,15 +7,26 @@
   'use strict';
 
   /* ---------- Config ---------- */
-  const STORAGE_KEY  = 'blog_crossword';
-  const VGRID        = 45;   // virtual grid used while generating (cropped afterwards)
-  const MAX_WORDS    = 16;   // words drawn from the vocabulary per grid
-  const MIN_PLACED   = 3;    // minimum words needed for a valid grid
-  const ATTEMPTS     = 80;   // random restarts of the generator
+  const STORAGE_KEY  = 'blog_crossword_v2';   // new key: old saved grids had other sizes
+  const SCORE_KEY    = 'blog_crossword_score';
+  const GRID         = 9;     // final grid is GRID x GRID
+  const VGRID        = 25;    // virtual grid used while generating
+  const MAX_WORDS    = 22;    // words drawn per grid
+  const MIN_PLACED   = 3;
+  const ATTEMPTS     = 150;
   const MIN_LETTERS  = 3;
-  const MAX_CELLS    = 20;   // longest entry, black boxes included
+  const MAX_CELLS    = 9;
   const ACROSS = 'across';
   const DOWN   = 'down';
+
+  const PTS_FOUND         = 10;
+  const PTS_REVEAL_WORD   = -5;
+  const PTS_REVEAL_LETTER = -2;
+
+  /* Blog-style themes used to pull everyday writing vocabulary from Datamuse */
+  const THEMES = ['opinion','insight','productivity','challenge','growth','trend','experience',
+                  'creativity','habit','learning','strategy','lifestyle','technology','culture','mindset'];
+  const POS_ABBR = { noun: 'n.', verb: 'v.', adjective: 'adj.', adverb: 'adv.' };
 
   /* ---------- State ---------- */
   let overlay, box, gridEl, gridWrap, messageEl, inputEl;
@@ -26,6 +37,11 @@
   let active = { r: 0, c: 0, dir: ACROSS };
   let busy = false;
   let lastScrolledEntry = null;
+
+  let scoreEl, scorePillEl;
+  let score = 0;
+  let candidates = null;           // word candidates from Datamuse
+  const defCache = new Map();      // word -> definition | null
 
   /* =============================================
      TEXT HELPERS
@@ -123,6 +139,11 @@
       const c1 = c0 + dc * (len - 1);
       if (r0 - dr < 1 || c0 - dc < 1 || r1 + dr > N - 2 || c1 + dc > N - 2) return -1;
       if (r0 < 1 || c0 < 1 || r1 > N - 2 || c1 > N - 2) return -1;
+
+      // Keep the whole puzzle inside GRID x GRID
+      const nh = Math.max(box.r1, r1) - Math.min(box.r0, r0) + 1;
+      const nw = Math.max(box.c1, c1) - Math.min(box.c0, c0) + 1;
+      if (nh > GRID || nw > GRID) return -1;
 
       // Cells right before / after the word must not hold a letter
       if (letter[(r0 - dr) * N + (c0 - dc)] || letter[(r1 + dr) * N + (c1 + dc)]) return -1;
@@ -232,17 +253,20 @@
     let best = null;
     for (let i = 0; i < ATTEMPTS; i++) {
       const res = attempt(pool);
+      if (res.h > GRID || res.w > GRID) continue;
       if (!best || res.quality > best.quality) best = res;
     }
     if (!best || best.placed.length < MIN_PLACED) return null;
 
     const minR = Math.min(...best.placed.map(p => p.r));
     const minC = Math.min(...best.placed.map(p => p.c));
+    const offR = Math.floor((GRID - best.h) / 2);
+    const offC = Math.floor((GRID - best.w) / 2);
     return best.placed.map(p => ({
       word: p.e.word,
       definition: p.e.definition,
-      r: p.r - minR,
-      c: p.c - minC,
+      r: p.r - minR + offR,
+      c: p.c - minC + offC,
       dir: p.d
     }));
   }
@@ -265,7 +289,7 @@
       };
     });
 
-    let rows = 0, cols = 0;
+    let rows = GRID, cols = GRID;
     entries.forEach(e => {
       const len = e.letters.length;
       rows = Math.max(rows, e.r + (e.dir === DOWN ? len : 1));
@@ -440,18 +464,21 @@
     activeClueEl.innerHTML = '';
     activeClueEl.classList.remove('cw-done');
     barEl.style.width = '0%';
-    subEl.textContent = 'From your vocabulary';
+    subEl.textContent = 'Blog-writing vocabulary';
     box.classList.remove('cw-complete');
     revealBtn.disabled = true;
   }
 
   function fit() {
     if (!puzzle || !gridWrap.clientWidth) return;
-    let size = Math.floor((gridWrap.clientWidth - 16) / puzzle.cols);
+    const PAD = 12, BORDER = 4, SAFETY = 2;   // wrap padding, grid border, rounding
+    const room = (px, n) => Math.floor((px - PAD - BORDER - (n - 1) - SAFETY) / n);
+
+    let size = room(gridWrap.clientWidth, puzzle.cols);
     if (window.matchMedia('(min-width: 861px)').matches) {
-      size = Math.min(size, Math.floor((gridWrap.clientHeight - 16) / puzzle.rows));
+      size = Math.min(size, room(gridWrap.clientHeight, puzzle.rows));
     }
-    size = Math.max(26, Math.min(size, 48));
+    size = Math.max(20, Math.min(size, 56));
     gridEl.style.setProperty('--cw', size + 'px');
   }
 
@@ -482,6 +509,12 @@
       cell.el.classList.toggle('cw-given', !!cell.given);
       if (cell.valEl.textContent !== cell.value) cell.valEl.textContent = cell.value;
     }));
+
+    // Score: only words found without any help earn points
+    if (newly.length) {
+      const earned = newly.filter(e => !e.cells.some(c => c && c.revealed)).length;
+      if (earned) addScore(earned * PTS_FOUND);
+    }
 
     newly.forEach(e => {
       e.cells.forEach((c, i) => {
@@ -514,7 +547,7 @@
 
     activeClueEl.classList.toggle('cw-done', puzzle.complete);
     if (puzzle.complete) {
-      activeClueEl.innerHTML = `<span>Grid complete — press Generate for a new one.</span>`;
+      activeClueEl.innerHTML = `<span>Grid complete — score ${score}. Press Generate for a new one.</span>`;
     } else if (ae) {
       activeClueEl.innerHTML = `
         <span class="cw-ac-tag">${ae.num} ${ae.dir === ACROSS ? 'Across' : 'Down'}</span>
@@ -738,6 +771,31 @@
     try { localStorage.removeItem(STORAGE_KEY); } catch { /* noop */ }
   }
 
+  function loadScore() {
+    try { score = parseInt(localStorage.getItem(SCORE_KEY), 10) || 0; } catch { score = 0; }
+    renderScore(0);
+  }
+
+  function addScore(delta) {
+    score += delta;
+    try { localStorage.setItem(SCORE_KEY, String(score)); } catch { /* noop */ }
+    renderScore(delta);
+  }
+
+  function renderScore(delta) {
+    scoreEl.textContent = score;
+    if (!delta) return;
+    scorePillEl.classList.remove('cw-bump');
+    void scorePillEl.offsetWidth;
+    scorePillEl.classList.add('cw-bump');
+
+    const chip = document.createElement('span');
+    chip.className = 'cw-delta ' + (delta > 0 ? 'cw-pos' : 'cw-neg');
+    chip.textContent = (delta > 0 ? '+' : '−') + Math.abs(delta);
+    chip.addEventListener('animationend', () => chip.remove());
+    scorePillEl.appendChild(chip);
+  }
+
   /* =============================================
      ACTIONS
      ============================================= */
@@ -752,10 +810,68 @@
     return !!puzzle && puzzle.grid.some(row => row.some(c => c && c.value && !c.given));
   }
 
+  async function fetchJSON(url, ms = 7000) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), ms);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return await res.json();
+    } finally { clearTimeout(t); }
+  }
+
+  /** Everyday written-English words around blog themes (Datamuse, with frequency data). */
+  async function loadCandidates() {
+    if (candidates) return candidates;
+    const results = await Promise.allSettled(
+      THEMES.map(t => fetchJSON(`https://api.datamuse.com/words?ml=${encodeURIComponent(t)}&md=pf&max=120`))
+    );
+    const set = new Set();
+    results.forEach(r => {
+      if (r.status !== 'fulfilled') return;
+      r.value.forEach(d => {
+        if (!/^[a-z]{4,9}$/.test(d.word)) return;
+        const tags = d.tags || [];
+        if (!tags.some(t => ['n', 'v', 'adj', 'adv'].includes(t))) return;
+        const f = parseFloat((tags.find(t => t.startsWith('f:')) || 'f:0').slice(2));
+        if (f < 1.5 || f > 400) return;          // skip too rare / too basic
+        set.add(d.word);
+      });
+    });
+    candidates = [...set];
+    return candidates;
+  }
+
+  async function fetchDefinition(word) {
+    const json = await fetchJSON(`https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`);
+    const meaning = json?.[0]?.meanings?.[0];
+    const defs = (meaning?.definitions || []).map(d => d.definition).filter(Boolean);
+    if (!defs.length) return null;
+
+    let text = defs.find(d => d.length <= 130) || defs[0];
+    if (text.length > 130) text = text.slice(0, 127).trimEnd() + '…';
+
+    // Don't give the answer away
+    const stem = word.length > 5 ? word.slice(0, -2) : word;
+    text = text.replace(new RegExp(stem + '\\w*', 'gi'), '_____');
+
+    const pos = POS_ABBR[meaning.partOfSpeech];
+    return pos ? `(${pos}) ${text}` : text;
+  }
+
   async function fetchVocabulary() {
-    const { data, error } = await db.from('vocabulary').select('word, definition');
-    if (error) throw error;
-    return data || [];
+    const all = await loadCandidates();
+    if (all.length < 12) throw new Error('Not enough candidate words');
+
+    const batch = shuffle(all).filter(w => !defCache.has(w)).slice(0, 30);
+    await Promise.allSettled(batch.map(async w => {
+      try { defCache.set(w, await fetchDefinition(w)); }
+      catch { defCache.set(w, null); }
+    }));
+
+    return shuffle(all.filter(w => defCache.get(w)))
+      .slice(0, MAX_WORDS + 6)
+      .map(w => ({ word: w, definition: defCache.get(w) }));
   }
 
   async function generate() {
@@ -775,7 +891,7 @@
       if (!placements) {
         renderEmpty();
         clearSaved();
-        showMessage('Couldn’t build a grid. Add a few more words to your vocabulary (at least 3, sharing some letters) and try again.');
+        showMessage('Couldn’t build a grid from the loaded words. Please try Generate again.');
         return;
       }
       setupPuzzle(placements, {}, [], null);
@@ -784,7 +900,7 @@
     } catch (err) {
       console.error('[Crosswords] generate failed:', err);
       if (!puzzle) renderEmpty();
-      showMessage('Could not load your vocabulary. Check your connection and try again.');
+      showMessage('Could not load words and definitions. Check your connection and try again.');
     } finally {
       busy = false;
       generateBtn.disabled = false;
@@ -799,6 +915,8 @@
 
     target.value = target.letter;
     target.revealed = true;
+
+    addScore(PTS_REVEAL_LETTER);
 
     // Keep the cursor inside this word, on the next missing letter
     const nextMissing = e.cells.find(c => c && c.value !== c.letter);
@@ -817,6 +935,7 @@
     e.cells.forEach(c => {
       if (c && c.value !== c.letter) { c.value = c.letter; c.revealed = true; }
     });
+    addScore(PTS_REVEAL_WORD);
     refresh(true);   // recomputes solved state + plays the yellow pop
     goToNextUnsolved(e);
     save();
@@ -825,6 +944,7 @@
   function reveal() {
     if (!puzzle || puzzle.complete) return;
     if (!confirm('Reveal all answers?')) return;
+    addScore(PTS_REVEAL_WORD * puzzle.entries.filter(e => !e.solved).length);
     puzzle.grid.forEach(row => row.forEach(c => {
       if (c && c.value !== c.letter) { c.value = c.letter; c.revealed = true; }
     }));
@@ -857,6 +977,10 @@
     generateBtn  = overlay.querySelector('#cw-generate');
     revealBtn    = overlay.querySelector('#cw-reveal');
     revealBtn.disabled = true;
+
+    scorePillEl = overlay.querySelector('#cw-score-pill');
+    scoreEl     = overlay.querySelector('#cw-score');
+    loadScore();
 
     generateBtn.addEventListener('click', generate);
     revealBtn.addEventListener('click', reveal);
