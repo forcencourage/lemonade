@@ -278,14 +278,14 @@
    * @param given  null  → brand-new puzzle: pick one random starter letter per word
    *               array → restore saved starter letters ("r,c" keys)
    */
-  function setupPuzzle(placements, answers = {}, revealed = [], given = null) {
-    const entries = placements.map((p, i) => {
+  function setupPuzzle(placements, answers = {}, revealed = [], given = null, scored = null) {
+      const entries = placements.map((p, i) => {
       const parsed = parseWord(p.word);
       return {
         id: i, word: p.word, definition: p.definition || '',
         dir: p.dir, r: p.r, c: p.c,
         letters: parsed.cells, enumStr: parsed.enumStr,
-        cells: [], num: 0, solved: false, el: null
+        cells: [], num: 0, solved: false, scored: false, el: null
       };
     });
 
@@ -359,6 +359,14 @@
         if (cell) { cell.given = true; cell.value = cell.letter; }
       });
     }
+
+    // Words that already paid out (or were revealed) can never pay again.
+    // Old saves without `scored` count currently-solved words as paid.
+    entries.forEach(e => {
+      e.scored = scored
+        ? scored.includes(e.id)
+        : e.cells.every(c => !c || c.value === c.letter);
+    });
 
     // Positions of the black boxes separating sub-words of an expression
     const gaps = new Set();
@@ -510,9 +518,11 @@
       if (cell.valEl.textContent !== cell.value) cell.valEl.textContent = cell.value;
     }));
 
-    // Score: only words found without any help earn points
+    // Score: each word pays out once, and only if found without any help
     if (newly.length) {
-      const earned = newly.filter(e => !e.cells.some(c => c && c.revealed)).length;
+      const fresh = newly.filter(e => !e.scored);
+      newly.forEach(e => { e.scored = true; });
+      const earned = fresh.filter(e => !e.cells.some(c => c && c.revealed)).length;
       if (earned) addScore(earned * PTS_FOUND);
     }
 
@@ -755,7 +765,8 @@
       if (cell.given) given.push(k);
     }));
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ placements: puzzle.placements, answers, revealed, given }));
+      const scored = puzzle.entries.filter(e => e.scored).map(e => e.id);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ placements: puzzle.placements, answers, revealed, given, scored }));
     } catch { /* storage unavailable */ }
   }
 
@@ -1018,7 +1029,7 @@
     if (saved) {
       try {
         // Old saves without `given` load as "no starter letters"
-        setupPuzzle(saved.placements, saved.answers || {}, saved.revealed || [], saved.given || []);
+        setupPuzzle(saved.placements, saved.answers || {}, saved.revealed || [], saved.given || [], saved.scored || null);
         focusInput();
         return;
       } catch (err) {
