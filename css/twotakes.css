@@ -149,7 +149,6 @@
 .tt-scroll { flex: 1; overflow-y: auto; }
 .tt-setup { max-width: 640px; margin: 0 auto; padding: 56px 32px 48px; }
 .tt-title { margin: 0 0 10px; font-family: var(--tt-display); font-weight: 400; font-size: 2.1rem; line-height: 1.12; letter-spacing: -.015em; }
-.tt-lede { margin: 0 0 34px; max-width: 52ch; color: var(--tt-muted); font-size: .96rem; line-height: 1.55; }
 .tt-field { margin-bottom: 30px; }
 
 .tt-q {

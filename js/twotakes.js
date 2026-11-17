@@ -192,8 +192,6 @@
     main.innerHTML = `
       <div class="tt-scroll">
         <div class="tt-setup">
-          <p class="tt-lede">Pick a question, give them common ground, choose two adversaries. They will keep answering each other without leaving the question.</p>
-
           <section class="tt-field">
             <label class="tt-label" for="tt-q">Question</label>
             <textarea id="tt-q" class="tt-q" rows="3" maxlength="600"
