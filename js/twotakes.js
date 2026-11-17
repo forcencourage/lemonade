@@ -671,8 +671,16 @@
     openTwotakes();
   });
 
-  // Reset when the user signs in/out
-  db.auth.onAuthStateChange(() => {
+  // Reset only when the signed-in user actually changes.
+  // Supabase also fires auth events (TOKEN_REFRESHED / SIGNED_IN) every time the
+  // browser tab regains focus; those must NOT wipe the modal.
+  let lastUid;   // undefined until the first auth event
+  db.auth.onAuthStateChange((_event, session) => {
+    const uid = session?.user?.id || null;
+    if (lastUid === undefined) { lastUid = uid; return; }
+    if (uid === lastUid) return;
+    lastUid = uid;
+
     S.loaded = false;
     S.debates = [];
     S.current = null;
