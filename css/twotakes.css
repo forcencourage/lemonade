@@ -26,7 +26,12 @@
   box-shadow: 0 30px 80px -20px rgba(0, 0, 0, .35), 0 0 0 1px rgba(0, 0, 0, .06);
 }
 .tt-box *, .tt-box *::before, .tt-box *::after { box-sizing: border-box; }
-.tt-box button { font-family: inherit; color: inherit; }
+/* :where() keeps this reset at zero specificity, so .btn-primary / .tt-plus can set their own white text */
+:where(.tt-box) button { font-family: inherit; color: inherit; }
+.tt-box .btn-primary,
+.tt-box .tt-plus { background: var(--tt-ink); color: #fff; }
+.tt-box .btn-primary svg,
+.tt-box .tt-plus svg { color: #fff; }
 .tt-box :focus-visible { outline: 2px solid var(--tt-ink); outline-offset: 2px; }
 
 .tt-close {
@@ -304,7 +309,6 @@
   .tt-box.sidebar-open .tt-sidebar { z-index: 10; }
 
   .tt-setup { padding: 64px 20px 36px; }
-  .tt-title { font-size: 1.7rem; }
   .tt-duel { grid-template-columns: 1fr; gap: 6px; }
   .tt-vs { text-align: center; }
   .tt-dhead { padding: 62px 20px 12px; }

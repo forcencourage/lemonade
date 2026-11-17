@@ -192,7 +192,6 @@
     main.innerHTML = `
       <div class="tt-scroll">
         <div class="tt-setup">
-          <h2 class="tt-title">What should they argue about?</h2>
           <p class="tt-lede">Pick a question, give them common ground, choose two adversaries. They will keep answering each other without leaving the question.</p>
 
           <section class="tt-field">
