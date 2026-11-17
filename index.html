@@ -24,6 +24,8 @@
   <link rel="stylesheet" href="css/crosswords.css">
   <link rel="stylesheet" href="css/thelonggame.css">
   <link rel="stylesheet" href="css/calendar.css">
+  <link rel="stylesheet" href="css/twotakes.css">
+
 
   <link rel="icon" type="image/x-icon" href="favicon.ico">
 
@@ -77,6 +79,10 @@
         <button class="collection-dropdown-item" id="collection-dropdown-calendar">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
           Calendar
+        </button>
+        <button class="collection-dropdown-item" id="collection-dropdown-twotakes">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="8.5" cy="12" r="5.5"/><circle cx="15.5" cy="12" r="5.5"/></svg>
+          Twotakes
         </button>
       </div>
     </div>
@@ -625,6 +631,28 @@
     </div>
   </div>
 
+  <!-- TWOTAKES MODAL -->
+  <div id="tt-modal" class="modal-overlay hidden">
+    <div id="tt-box" class="tt-box" role="dialog" aria-modal="true" aria-label="Twotakes">
+      <button id="tt-close" class="tt-close" data-action="close" title="Close" aria-label="Close">✕</button>
+
+      <aside id="tt-sidebar" class="tt-sidebar">
+        <div class="tt-side-head">
+          <span class="tt-brand"><span class="tt-mark"></span>Twotakes</span>
+          <button class="tt-new" data-action="new" title="New debate" aria-label="New debate">+</button>
+        </div>
+        <ul id="tt-list" class="tt-list"></ul>
+      </aside>
+
+      <section class="tt-panel">
+        <button class="tt-menu-btn" data-action="toggle-sidebar" aria-label="Show debates">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </button>
+        <div id="tt-main" class="tt-main"></div>
+      </section>
+    </div>
+  </div>
+
   <!-- AVATAR CROP MODAL -->
   <div id="crop-modal" class="modal-overlay hidden">
     <div class="modal-box crop-modal-box">
@@ -651,5 +679,7 @@
   <script src="js/crosswords.js"></script>
   <script src="js/thelonggame.js"></script>
   <script src="js/calendar.js"></script>
+  <script src="js/twotakes.js"></script>
+
 </body>
 </html>
