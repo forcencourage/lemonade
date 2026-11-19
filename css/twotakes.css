@@ -206,7 +206,7 @@
 .tt-dhead { flex: none; padding: 26px 56px 14px 40px; border-bottom: 1px solid var(--tt-line); }
 .tt-question {
   margin: 0 0 14px; max-width: 62ch; font-family: var(--tt-display); font-weight: 400;
-  font-size: 1.6rem; line-height: 1.2; letter-spacing: -.01em;
+  font-size: 1.2rem; line-height: 1.2; letter-spacing: -.01em;
 }
 .tt-versus { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
 .tt-side { display: inline-flex; align-items: center; gap: 8px; font-size: .9rem; }
